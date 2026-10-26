@@ -113,7 +113,21 @@ const releaseDate = computed(() => {
   const date = new Date(update.value.release?.publishedAt || '');
   return Number.isFinite(date.getTime()) ? date.toLocaleDateString('zh-CN') : '';
 });
-const preferences = ref(readState('abner:preferences', { theme: 'light', showDemos: true }));
+const preferences = ref(
+  readState<{ theme: 'light' | 'dark' | 'system'; showDemos: boolean }>('abner:preferences', {
+    theme: 'system',
+    showDemos: true,
+  }),
+);
+const systemAppearance = window.matchMedia('(prefers-color-scheme: dark)');
+const systemDark = ref(systemAppearance.matches);
+const resolvedTheme = computed(() =>
+  preferences.value.theme === 'system'
+    ? systemDark.value
+      ? 'dark'
+      : 'light'
+    : preferences.value.theme,
+);
 const now = new Date();
 const dateLabel = `${String(now.getMonth() + 1).padStart(2, '0')} / ${String(now.getDate()).padStart(2, '0')} · ${['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][now.getDay()]}`;
 let noticeTimeout: ReturnType<typeof setTimeout>;
@@ -509,9 +523,15 @@ watch(activeLyric, async () => {
     ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 });
 watch(
+  resolvedTheme,
+  (theme) => {
+    document.documentElement.dataset.theme = theme;
+  },
+  { immediate: true },
+);
+watch(
   preferences,
   () => {
-    document.documentElement.dataset.theme = preferences.value.theme;
     try {
       localStorage.setItem('abner:preferences', JSON.stringify(preferences.value));
     } catch {
@@ -521,6 +541,11 @@ watch(
   { deep: true, immediate: true },
 );
 onMounted(async () => {
+  const onAppearanceChange = (event: MediaQueryListEvent) => {
+    systemDark.value = event.matches;
+  };
+  systemAppearance.addEventListener('change', onAppearanceChange);
+  cleanup.push(() => systemAppearance.removeEventListener('change', onAppearanceChange));
   document.addEventListener('keydown', keyboard);
   window.addEventListener('abner:notice', onNotice);
   try {
@@ -568,72 +593,73 @@ onUnmounted(() => {
         ><span class="brand-icon"><AudioLines :size="24" :stroke-width="2.5" /></span
         ><span>abner<span class="brand-music">music</span><i /></span
       ></a>
-      <div class="sidebar-group">
-        <span class="nav-caption">探索</span
-        ><button
-          class="nav-item"
-          :class="{ selected: page === 'discover' && !search }"
-          @click="navigate('discover')"
-        >
-          <LayoutGrid :size="18" /><span>发现音乐</span><i />
-        </button>
-      </div>
-      <div class="sidebar-group library-nav">
-        <span class="nav-caption">我的音乐库</span
-        ><button
-          class="nav-item"
-          :class="{ selected: page === 'library' && !search }"
-          @click="navigate('library')"
-        >
-          <Music2 :size="18" /><span>全部音乐</span><small>{{ allTracks.length }}</small></button
-        ><button
-          class="nav-item"
-          :class="{ selected: page === 'favorites' && !search }"
-          @click="navigate('favorites')"
-        >
-          <Heart :size="18" /><span>我喜欢的</span
-          ><small>{{ favoriteTracks.length }}</small></button
-        ><button
-          class="nav-item"
-          :class="{ selected: page === 'recent' && !search }"
-          @click="navigate('recent')"
-        >
-          <Clock3 :size="18" /><span>最近播放</span></button
-        ><button
-          class="nav-item"
-          :class="{ selected: page === 'network' && !search }"
-          @click="navigate('network')"
-        >
-          <Link2 :size="18" /><span>网络音乐</span>
-        </button>
-      </div>
-      <div class="sidebar-group playlist-nav">
-        <div class="caption-row">
-          <button class="nav-caption" @click="navigate('playlists')">我的歌单</button
-          ><button class="icon-button" aria-label="创建歌单" @click="openModal('playlist')">
-            <Plus :size="16" />
+      <div class="sidebar-navigation">
+        <div class="sidebar-group">
+          <span class="nav-caption">探索</span
+          ><button
+            class="nav-item"
+            :class="{ selected: page === 'discover' && !search }"
+            @click="navigate('discover')"
+          >
+            <LayoutGrid :size="18" /><span>发现音乐</span><i />
           </button>
         </div>
-        <button
-          v-for="playlist in library.playlists"
-          :key="playlist.id"
-          class="nav-item playlist-nav-item"
-          :class="{ selected: page === `playlist:${playlist.id}` }"
-          @click="navigate(`playlist:${playlist.id}`)"
-        >
-          <ListMusic :size="18" /><span>{{ playlist.name }}</span></button
-        ><button class="new-playlist" @click="openModal('playlist')">
-          <Plus :size="16" />创建新歌单
-        </button>
+        <div class="sidebar-group library-nav">
+          <span class="nav-caption">我的音乐库</span
+          ><button
+            class="nav-item"
+            :class="{ selected: page === 'library' && !search }"
+            @click="navigate('library')"
+          >
+            <Music2 :size="18" /><span>全部音乐</span><small>{{ allTracks.length }}</small></button
+          ><button
+            class="nav-item"
+            :class="{ selected: page === 'favorites' && !search }"
+            @click="navigate('favorites')"
+          >
+            <Heart :size="18" /><span>我喜欢的</span
+            ><small>{{ favoriteTracks.length }}</small></button
+          ><button
+            class="nav-item"
+            :class="{ selected: page === 'recent' && !search }"
+            @click="navigate('recent')"
+          >
+            <Clock3 :size="18" /><span>最近播放</span></button
+          ><button
+            class="nav-item"
+            :class="{ selected: page === 'network' && !search }"
+            @click="navigate('network')"
+          >
+            <Link2 :size="18" /><span>网络音乐</span>
+          </button>
+        </div>
+        <div class="sidebar-group playlist-nav">
+          <div class="caption-row">
+            <button class="nav-caption" @click="navigate('playlists')">我的歌单</button
+            ><button class="icon-button" aria-label="创建歌单" @click="openModal('playlist')">
+              <Plus :size="16" />
+            </button>
+          </div>
+          <button
+            v-for="playlist in library.playlists"
+            :key="playlist.id"
+            class="nav-item playlist-nav-item"
+            :class="{ selected: page === `playlist:${playlist.id}` }"
+            @click="navigate(`playlist:${playlist.id}`)"
+          >
+            <ListMusic :size="18" /><span>{{ playlist.name }}</span></button
+          ><button class="new-playlist" @click="openModal('playlist')">
+            <Plus :size="16" />创建新歌单
+          </button>
+        </div>
       </div>
       <div class="sidebar-bottom">
-        <div class="local-card">
-          <div class="local-card-icon"><Headphones :size="21" :stroke-width="1.5" /></div>
-          <strong>你的音乐，自由聆听</strong>
-          <p>把喜欢的声音，放在一起。</p>
-          <button @click="importLocal()"><Plus :size="14" />导入本地音乐</button>
-        </div>
-        <button class="settings-nav" @click="openModal('settings')">
+        <button
+          class="settings-nav"
+          :aria-label="`设置 v${version}`"
+          title="设置"
+          @click="openModal('settings')"
+        >
           <Settings2 :size="17" /><span>设置</span><small>v{{ version }}</small>
         </button>
       </div>
@@ -675,6 +701,8 @@ onUnmounted(() => {
           <div class="import-dropdown" @click.stop>
             <button
               class="button import-button"
+              :aria-label="importing ? '正在导入' : '导入音乐'"
+              title="导入音乐"
               :disabled="importing"
               @click="importMenu = !importMenu"
             >
@@ -1298,17 +1326,26 @@ onUnmounted(() => {
             <h3>聆听与外观</h3>
             <div class="setting-row">
               <div><strong>界面主题</strong><span>选择更适合此刻的色调</span></div>
-              <div class="segmented-control">
+              <div class="segmented-control" role="group" aria-label="界面主题">
                 <button
                   :class="{ active: preferences.theme === 'light' }"
+                  :aria-pressed="preferences.theme === 'light'"
                   @click="preferences.theme = 'light'"
                 >
                   浅色</button
                 ><button
                   :class="{ active: preferences.theme === 'dark' }"
+                  :aria-pressed="preferences.theme === 'dark'"
                   @click="preferences.theme = 'dark'"
                 >
                   深色
+                </button>
+                <button
+                  :class="{ active: preferences.theme === 'system' }"
+                  :aria-pressed="preferences.theme === 'system'"
+                  @click="preferences.theme = 'system'"
+                >
+                  跟随系统
                 </button>
               </div>
             </div>

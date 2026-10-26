@@ -50,6 +50,7 @@ const runtimeMessages = [];
 async function launch() {
   application = await electron.launch({
     executablePath,
+    colorScheme: null,
     args: ['-r', loader, `--user-data-dir=${userData}`],
     timeout: 60000,
   });
@@ -78,6 +79,48 @@ try {
   if (process.platform === 'darwin') assert.equal(branding.menu, 'Abner Music');
   assert.equal(await page.evaluate(() => window.desktop.platform), process.platform);
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
+  await page.locator('.settings-nav').click();
+  await expect(page.getByRole('button', { name: '跟随系统', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  for (const theme of ['dark', 'light']) {
+    await application.evaluate(({ nativeTheme }, appearance) => {
+      nativeTheme.themeSource = appearance;
+    }, theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  }
+  await page.getByRole('button', { name: '深色', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await application.evaluate(({ nativeTheme }) => {
+    nativeTheme.themeSource = 'dark';
+    nativeTheme.themeSource = 'light';
+  });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: '跟随系统', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+  await application.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0].setContentSize(1000, 720);
+  });
+  await expect(page.locator('.local-card')).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.locator('.settings-nav').evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const player = document.querySelector('.player-bar').getBoundingClientRect();
+        return bounds.top >= 0 && bounds.bottom <= player.top;
+      }),
+    )
+    .toBe(true);
+  await page.locator('.topbar .import-button').click({ trial: true });
+  await page.locator('.settings-nav').click();
+  await expect(page.getByRole('dialog', { name: '偏好设置' })).toBeVisible();
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+  await application.evaluate(({ BrowserWindow, nativeTheme }) => {
+    BrowserWindow.getAllWindows()[0].setContentSize(1440, 960);
+    nativeTheme.themeSource = 'system';
+  });
   await application.evaluate(({ dialog }, file) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
   }, fixture);
@@ -160,6 +203,10 @@ try {
     };
   });
   await page.getByRole('button', { name: /设置 v/ }).click();
+  await expect(page.getByRole('button', { name: '跟随系统', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page.getByRole('button', { name: '检查更新', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '发现新版本' })).toBeVisible();
   await expect(page.getByLabel('更新日志')).toContainText('验证原生检查更新');
@@ -170,7 +217,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    `Packaged desktop smoke passed (${process.platform}/${arch}, ${packageInfo.version}): native import, metadata, LRC, Range/CORS, equalizer playback, mini window, persistence, safe removal, manual update changelog and GitHub link.`,
+    `Packaged desktop smoke passed (${process.platform}/${arch}, ${packageInfo.version}): system theme, compact sidebar, native import, metadata, LRC, Range/CORS, equalizer playback, mini window, persistence, safe removal, manual update changelog and GitHub link.`,
   );
 } catch (error) {
   const page = application?.windows()[0];
