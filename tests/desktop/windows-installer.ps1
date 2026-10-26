@@ -154,7 +154,11 @@ try {
   if ($launched) { throw 'The installer unexpectedly launched the application' }
 
   $entry = Get-ItemProperty $registryPaths -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName -eq 'Abner Music' -and $_.InstallLocation.TrimEnd('\') -eq $installation }
+    Where-Object {
+      $_.DisplayName -eq 'Abner Music' -and
+      $_.UninstallString -and
+      $_.UninstallString.StartsWith('"' + $uninstaller + '"', [StringComparison]::OrdinalIgnoreCase)
+    }
   if (@($entry).Count -ne 1) { throw 'Installed Apps registry entry missing or duplicated' }
   $displayIcon = ($entry.DisplayIcon -replace ',\d+$', '').Trim('"')
   if (!(Test-Path $displayIcon)) { throw "Installed Apps icon missing: $displayIcon" }
