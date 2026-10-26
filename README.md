@@ -48,7 +48,7 @@ npm run test:e2e
 npm run format:check
 ```
 
-原生验证需要先运行 `npm run package`，然后执行 `npm run test:desktop`。测试使用独立临时数据目录，覆盖系统文件导入、标签与 LRC 读取、Range / CORS、本地音效播放、迷你窗口、重启持久化与保留原文件的移除操作。
+原生验证需要先运行 `npm run package`，然后执行 `npm run test:desktop`。测试直接启动 `out/` 中打包后的应用，确认从 `app.asar` 运行且版本正确，使用独立临时数据目录，覆盖系统文件导入、标签与 LRC 读取、Range / CORS、本地音效播放、迷你窗口、重启持久化、保留原文件的移除操作，以及更新日志和 GitHub 下载跳转。跨架构打包时传入对应的 `--arch`，例如 `npm run test:desktop -- --arch=x64`。发布工作流在每个构建平台执行此检查，通过后才上传安装包。
 
 已安装 Chrome 时，也可以使用 `PLAYWRIGHT_CHANNEL=chrome npm run test:e2e`。端到端测试覆盖试听播放、拖动进度、切歌、收藏和歌单持久化、本地导入、网络 URL 校验、歌词、队列、音效、定时与响应式布局。
 

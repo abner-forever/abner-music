@@ -38,6 +38,8 @@ jobs:
       - run: npm test
       - name: Make installers
         run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+      - name: Verify packaged application
+        run: npm run test:desktop -- --arch=${{ matrix.arch }}
       - name: Create macOS disk image
         if: runner.os == 'macOS'
         run: node scripts/make-dmg.mjs --arch ${{ matrix.arch }}

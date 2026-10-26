@@ -48,6 +48,9 @@ const extensions = new Set([
   '.aif',
 ]);
 const catalogPath = () => path.join(app.getPath('userData'), 'library.json');
+const appIcon = app.isPackaged
+  ? path.join(process.resourcesPath, 'icon.png')
+  : path.join(app.getAppPath(), 'build/icon.png');
 let saveQueue = Promise.resolve();
 
 function saveCatalog() {
@@ -161,7 +164,7 @@ function createWindow() {
     minHeight: 720,
     backgroundColor: '#f7f8f2',
     title: 'Abner Music',
-    icon: path.join(app.getAppPath(), 'build/icon.png'),
+    icon: appIcon,
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 22, y: 23 },
     frame: process.platform === 'darwin',
@@ -191,7 +194,7 @@ if (!squirrelStartup && app.requestSingleInstanceLock()) {
   });
   void app.whenReady().then(async () => {
     if (process.platform === 'darwin') {
-      app.dock?.setIcon(path.join(app.getAppPath(), 'build/icon.png'));
+      app.dock?.setIcon(appIcon);
     }
     try {
       records = JSON.parse(await readFile(catalogPath(), 'utf8'));

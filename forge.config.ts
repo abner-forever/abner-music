@@ -13,6 +13,7 @@ const config: ForgeConfig = {
     name: 'Abner Music',
     asar: true,
     icon: 'build/icon',
+    extraResource: ['build/icon.png'],
     ...(process.env.ELECTRON_ZIP_DIR ? { electronZipDir: process.env.ELECTRON_ZIP_DIR } : {}),
     executableName: 'abner-music',
     appBundleId: 'com.abner.music',

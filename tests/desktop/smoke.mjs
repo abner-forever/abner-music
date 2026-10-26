@@ -2,9 +2,24 @@ import { _electron as electron, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
+const require = createRequire(import.meta.url);
+const packageInfo = JSON.parse(await readFile(new URL('../../package.json', import.meta.url)));
+const arch =
+  process.argv.find((argument) => argument.startsWith('--arch='))?.slice(7) || process.arch;
+const output = path.resolve('out', `Abner Music-${process.platform}-${arch}`);
+const executablePath =
+  process.platform === 'darwin'
+    ? path.join(output, 'Abner Music.app', 'Contents', 'MacOS', 'abner-music')
+    : path.join(output, process.platform === 'win32' ? 'abner-music.exe' : 'abner-music');
+assert.ok(existsSync(executablePath), `Run npm run package first: ${executablePath}`);
+const loader = path.join(
+  path.dirname(require.resolve('playwright-core/package.json')),
+  'lib/server/electron/loader.js',
+);
 const directory = await mkdtemp(path.join(os.tmpdir(), 'abner-music-smoke-'));
 const fixture = path.join(directory, 'desktop-fixture.wav');
 const userData = path.join(directory, 'profile');
@@ -34,9 +49,11 @@ const errors = [];
 const runtimeMessages = [];
 async function launch() {
   application = await electron.launch({
-    args: ['.', `--user-data-dir=${userData}`],
+    executablePath,
+    args: ['-r', loader, `--user-data-dir=${userData}`],
     timeout: 60000,
   });
+  application.process().stderr.on('data', (chunk) => runtimeMessages.push(chunk.toString()));
   const page = await application.firstWindow();
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
@@ -49,9 +66,15 @@ try {
   let page = await launch();
   const branding = await application.evaluate(({ app, Menu }) => ({
     name: app.getName(),
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+    appPath: app.getAppPath(),
     menu: Menu.getApplicationMenu()?.items[0].label,
   }));
   assert.equal(branding.name, 'Abner Music');
+  assert.equal(branding.version, packageInfo.version);
+  assert.equal(branding.packaged, true);
+  assert.equal(path.basename(branding.appPath), 'app.asar');
   if (process.platform === 'darwin') assert.equal(branding.menu, 'Abner Music');
   assert.equal(await page.evaluate(() => window.desktop.platform), process.platform);
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
@@ -147,7 +170,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    'Desktop smoke passed: native import, metadata, LRC, Range/CORS, equalizer playback, mini window, persistence, safe removal, manual update changelog and GitHub link.',
+    `Packaged desktop smoke passed (${process.platform}/${arch}, ${packageInfo.version}): native import, metadata, LRC, Range/CORS, equalizer playback, mini window, persistence, safe removal, manual update changelog and GitHub link.`,
   );
 } catch (error) {
   const page = application?.windows()[0];
