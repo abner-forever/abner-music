@@ -110,6 +110,15 @@ function Assert-BrandedIcon([string]$Filename) {
   }
 }
 
+function Get-IconDigest([string]$Filename) {
+  $algorithm = [Security.Cryptography.SHA256]::Create()
+  try {
+    return [Convert]::ToBase64String($algorithm.ComputeHash([IO.File]::ReadAllBytes($Filename)))
+  } finally {
+    $algorithm.Dispose()
+  }
+}
+
 $installer = $null
 try {
   Assert-BrandedIcon $artifact
@@ -162,7 +171,7 @@ try {
   if (@($entry).Count -ne 1) { throw 'Installed Apps registry entry missing or duplicated' }
   $displayIcon = ($entry.DisplayIcon -replace ',\d+$', '').Trim('"')
   if (!(Test-Path $displayIcon)) { throw "Installed Apps icon missing: $displayIcon" }
-  if ((Get-FileHash $displayIcon).Hash -ne (Get-FileHash (Join-Path $project 'build/icon.ico')).Hash) {
+  if ((Get-IconDigest $displayIcon) -ne (Get-IconDigest (Join-Path $project 'build/icon.ico'))) {
     throw 'Installed Apps does not use the application icon'
   }
   Assert-BrandedIcon $executable
