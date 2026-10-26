@@ -251,8 +251,14 @@ try {
   assert.deepEqual(errors, []);
   await page.getByRole('button', { name: '稍后再说', exact: true }).click();
   const quit = application.waitForEvent('close', { timeout: 10000 });
-  await page.getByRole('button', { name: '退出应用', exact: true }).click();
-  await quit;
+  const quitClick = page
+    .getByRole('button', { name: '退出应用', exact: true })
+    .click()
+    .catch((error) => {
+      if (!page.isClosed()) throw error;
+    });
+  await Promise.all([quit, quitClick]);
+  await expect.poll(() => application.process().exitCode).toBe(0);
   application = undefined;
   console.log(
     `Packaged desktop smoke passed (${process.platform}/${arch}, ${packageInfo.version}): system theme, compact sidebar, native import, metadata, LRC, Range/CORS, equalizer playback, background playback and restore, mini window, persistence, safe removal, manual update changelog, GitHub link and explicit quit.`,
