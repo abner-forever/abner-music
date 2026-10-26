@@ -1,7 +1,7 @@
 {
   "name": "abner-music",
   "productName": "Abner Music",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "type": "module",
   "description": "A little space for the music you love. 本地与网络音乐桌面播放器。",
   "main": ".vite/build/main.cjs",
@@ -14,20 +14,33 @@
     "url": "https://github.com/abner-forever/abner-music.git"
   },
   "private": true,
+  "build": {
+    "appId": "com.abner.music",
+    "productName": "Abner Music",
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "icon": "build/icon.ico"
+    },
+    "publish": null
+  },
   "scripts": {
     "postinstall": "node scripts/install-electron.mjs",
     "start": "electron-forge start",
     "dev": "vite --config vite.renderer.config.ts --host 127.0.0.1",
     "build": "vue-tsc --noEmit && vite build --config vite.renderer.config.ts",
+    "assets": "node scripts/generate-icons.mjs",
     "typecheck": "vue-tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/unit/*.test.ts",
     "test:e2e": "playwright test",
     "test:desktop": "node tests/desktop/smoke.mjs",
+    "test:dmg": "node tests/desktop/dmg.mjs",
+    "test:installer": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/desktop/windows-installer.ps1",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "make:dmg": "electron-forge make && node scripts/make-dmg.mjs",
     "publish": "electron-forge publish",
     "preview": "vite preview --config vite.renderer.config.ts --host 127.0.0.1"
   },
@@ -40,7 +53,7 @@
   },
   "devDependencies": {
     "@electron-forge/cli": "^8.0.1",
-    "@electron-forge/maker-squirrel": "^8.0.1",
+    "@electron-forge/maker-dmg": "^8.0.1",
     "@electron-forge/maker-zip": "^8.0.1",
     "@electron-forge/plugin-vite": "^8.0.1",
     "@electron-forge/publisher-github": "^8.0.1",
@@ -51,6 +64,7 @@
     "@types/semver": "^7.8.0",
     "@vitejs/plugin-vue": "^6.0.0",
     "electron": "^45.0.0",
+    "electron-forge-maker-nsis": "^26.18.0",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
     "vite": "^7.0.0",
@@ -58,7 +72,8 @@
   },
   "allowScripts": {
     "electron": true,
-    "electron-winstaller": true,
-    "esbuild": true
+    "esbuild": true,
+    "fs-xattr": true,
+    "macos-alias": true
   }
 }

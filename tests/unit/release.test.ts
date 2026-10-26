@@ -16,7 +16,7 @@ it('release preparation validates every platform installer, normalizes filenames
       `Abner Music-darwin-x64-${version}.zip`,
       `Abner-Music-${version}-arm64.dmg`,
       `Abner-Music-${version}-x64.dmg`,
-      'AbnerMusicSetup.exe',
+      `Abner-Music-${version}-windows-x64.exe`,
     ];
     for (const name of names) await writeFile(path.join(directory, name), 'fixture');
     execFileSync(process.execPath, ['scripts/prepare-release.mjs', directory], {

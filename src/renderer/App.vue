@@ -4,6 +4,7 @@ import {
   ArrowDownToLine,
   ArrowRight,
   AudioLines,
+  Camera,
   Check,
   CheckCheck,
   ChevronDown,
@@ -38,6 +39,7 @@ import CoverArt from './components/CoverArt.vue';
 import TrackTable from './components/TrackTable.vue';
 import PlayerBar from './components/PlayerBar.vue';
 import { collections, formatTime, parseLyrics } from './lib/music';
+import { readPlaylistArtwork } from './lib/artwork';
 import { readState } from './lib/storage';
 import {
   addNetworkTrack,
@@ -99,6 +101,8 @@ const lyricDraft = ref('');
 const selectedTrack = ref<Track>();
 const contextMenu = ref<{ track: Track; x: number; y: number }>();
 const fileInput = ref<HTMLInputElement>();
+const coverInput = ref<HTMLInputElement>();
+const changingCover = ref(false);
 const searchInput = ref<HTMLInputElement>();
 const importMenu = ref(false);
 const version = ref(packageInfo.version);
@@ -325,6 +329,25 @@ function submitPlaylist() {
   closeModal();
   navigate(`playlist:${playlist.id}`);
   toast('歌单创建成功');
+}
+async function changePlaylistCover(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  const playlist = selectedPlaylist.value;
+  if (!file || !playlist || changingCover.value) return;
+  changingCover.value = true;
+  try {
+    const artwork = await readPlaylistArtwork(file);
+    if (library.playlists.includes(playlist)) {
+      playlist.artwork = artwork;
+      toast('歌单封面已更新');
+    }
+  } catch (error) {
+    toast(errorMessage(error));
+  } finally {
+    changingCover.value = false;
+    input.value = '';
+  }
 }
 function addPlaylist(track: Track) {
   selectedTrack.value = track;
@@ -695,9 +718,6 @@ onUnmounted(() => {
           ><kbd v-else>{{ platform === 'darwin' ? '⌘' : 'Ctrl' }} K</kbd></label
         >
         <div class="topbar-actions">
-          <button class="text-button network-top" @click="openModal('network')">
-            <Link2 :size="16" /><span>添加网络音乐</span>
-          </button>
           <div class="import-dropdown" @click.stop>
             <button
               class="button import-button"
@@ -896,6 +916,16 @@ onUnmounted(() => {
                 <Heart :size="70" :stroke-width="1" />
               </div>
               <CoverArt v-else :artwork="(selectedPlaylist || selectedCollection)?.artwork" />
+              <button
+                v-if="selectedPlaylist"
+                class="playlist-cover-button"
+                :disabled="changingCover"
+                aria-label="修改歌单封面"
+                @click="coverInput?.click()"
+              >
+                <LoaderCircle v-if="changingCover" :size="16" class="spin" />
+                <Camera v-else :size="16" />{{ changingCover ? '处理中…' : '修改封面' }}
+              </button>
             </div>
             <div class="library-hero-copy">
               <div class="eyebrow">
@@ -1152,6 +1182,14 @@ onUnmounted(() => {
       hidden
       @change="handleFiles(($event.target as HTMLInputElement).files || undefined)"
     />
+    <input
+      ref="coverInput"
+      type="file"
+      accept="image/png,image/jpeg,image/webp,image/gif"
+      aria-label="选择歌单封面"
+      hidden
+      @change="changePlaylistCover"
+    />
 
     <Transition name="toast"
       ><div v-if="notice" class="toast-notice" role="status">
@@ -1388,6 +1426,28 @@ onUnmounted(() => {
                   { value: 2, label: '2.0×' },
                 ]"
               />
+            </div>
+          </div>
+          <div v-if="isDesktop" class="settings-section">
+            <h3>窗口与后台</h3>
+            <div class="setting-row">
+              <div>
+                <strong>关闭窗口后继续播放</strong>
+                <span>关闭后保留在后台，点击托盘图标可重新打开</span>
+              </div>
+              <button
+                class="button"
+                @click="
+                  desktop?.window.close();
+                  closeModal();
+                "
+              >
+                转入后台
+              </button>
+            </div>
+            <div class="setting-row">
+              <div><strong>退出 Abner Music</strong><span>停止播放并彻底退出应用</span></div>
+              <button class="button" @click="desktop?.app.quit()">退出应用</button>
             </div>
           </div>
           <div class="settings-section">

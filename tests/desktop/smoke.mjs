@@ -12,9 +12,10 @@ const arch =
   process.argv.find((argument) => argument.startsWith('--arch='))?.slice(7) || process.arch;
 const output = path.resolve('out', `Abner Music-${process.platform}-${arch}`);
 const executablePath =
-  process.platform === 'darwin'
+  process.argv.find((argument) => argument.startsWith('--executable='))?.slice(13) ||
+  (process.platform === 'darwin'
     ? path.join(output, 'Abner Music.app', 'Contents', 'MacOS', 'abner-music')
-    : path.join(output, process.platform === 'win32' ? 'abner-music.exe' : 'abner-music');
+    : path.join(output, process.platform === 'win32' ? 'abner-music.exe' : 'abner-music'));
 assert.ok(existsSync(executablePath), `Run npm run package first: ${executablePath}`);
 const loader = path.join(
   path.dirname(require.resolve('playwright-core/package.json')),
@@ -151,6 +152,38 @@ try {
   await page.getByRole('button', { name: '播放 desktop-fixture', exact: true }).click();
   await expect(page.locator('.play-toggle')).toHaveAttribute('aria-label', '暂停');
   await expect.poll(() => page.locator('.timeline > span').first().textContent()).not.toBe('0:00');
+  const playbackTime = await page.locator('.timeline > span').first().textContent();
+  await page.evaluate(() => window.desktop.window.close());
+  await expect
+    .poll(() =>
+      application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
+    )
+    .toBe(false);
+  await expect(page.locator('.play-toggle')).toHaveAttribute('aria-label', '暂停');
+  await expect
+    .poll(() => page.locator('.timeline > span').first().textContent())
+    .not.toBe(playbackTime);
+  await application.evaluate(({ app }) => app.emit('activate'));
+  await expect
+    .poll(() =>
+      application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
+    )
+    .toBe(true);
+  assert.equal(application.windows().length, 1);
+  await page.locator('.settings-nav').click();
+  await page.getByRole('button', { name: '转入后台', exact: true }).click();
+  await expect
+    .poll(() =>
+      application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
+    )
+    .toBe(false);
+  await application.evaluate(({ app }) => app.emit('second-instance'));
+  await expect
+    .poll(() =>
+      application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
+    )
+    .toBe(true);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: '歌词', exact: true }).click();
   await expect(page.locator('.lyrics-lines button')).toHaveCount(2);
   await page.getByRole('button', { name: '返回音乐', exact: true }).click();
@@ -216,8 +249,13 @@ try {
     'https://github.com/abner-forever/abner-music/releases/tag/v99.0.0',
   );
   assert.deepEqual(errors, []);
+  await page.getByRole('button', { name: '稍后再说', exact: true }).click();
+  const quit = application.waitForEvent('close', { timeout: 10000 });
+  await page.getByRole('button', { name: '退出应用', exact: true }).click();
+  await quit;
+  application = undefined;
   console.log(
-    `Packaged desktop smoke passed (${process.platform}/${arch}, ${packageInfo.version}): system theme, compact sidebar, native import, metadata, LRC, Range/CORS, equalizer playback, mini window, persistence, safe removal, manual update changelog and GitHub link.`,
+    `Packaged desktop smoke passed (${process.platform}/${arch}, ${packageInfo.version}): system theme, compact sidebar, native import, metadata, LRC, Range/CORS, equalizer playback, background playback and restore, mini window, persistence, safe removal, manual update changelog, GitHub link and explicit quit.`,
   );
 } catch (error) {
   const page = application?.windows()[0];

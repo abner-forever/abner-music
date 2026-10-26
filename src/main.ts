@@ -1,4 +1,15 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  net,
+  protocol,
+  shell,
+  Tray,
+} from 'electron';
 import squirrelStartup from 'electron-squirrel-startup';
 import { parseFile } from 'music-metadata';
 import { randomUUID } from 'node:crypto';
@@ -12,6 +23,7 @@ import type { Track, UpdateStatus } from './shared/types';
 
 if (squirrelStartup) app.quit();
 app.setName('Abner Music');
+if (process.platform === 'win32') app.setAppUserModelId('com.abner.music');
 const customDataDirectory = app.commandLine.getSwitchValue('user-data-dir');
 if (customDataDirectory) app.setPath('userData', path.resolve(customDataDirectory));
 protocol.registerSchemesAsPrivileged([
@@ -28,6 +40,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let quitting = false;
 let updateStatus: UpdateStatus = {
   state: 'idle',
   message: '检查新版本，查看更新日志并前往 GitHub 下载',
@@ -156,10 +170,42 @@ function configureUpdates() {
   });
 }
 
+function showWindow() {
+  if (!mainWindow) createWindow();
+  if (mainWindow?.isMinimized()) mainWindow.restore();
+  mainWindow?.show();
+  mainWindow?.focus();
+}
+
+function createTray() {
+  const size = process.platform === 'darwin' ? 18 : 16;
+  tray = new Tray(nativeImage.createFromPath(appIcon).resize({ width: size, height: size }));
+  tray.setToolTip('Abner Music');
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: '打开 Abner Music', click: showWindow },
+      { type: 'separator' },
+      {
+        label: '播放 / 暂停',
+        click: () => mainWindow?.webContents.send('player:media-key', 'toggle'),
+      },
+      { label: '下一首', click: () => mainWindow?.webContents.send('player:media-key', 'next') },
+      {
+        label: '上一首',
+        click: () => mainWindow?.webContents.send('player:media-key', 'previous'),
+      },
+      { type: 'separator' },
+      { label: '退出 Abner Music', click: () => app.quit() },
+    ]),
+  );
+  tray.on('click', showWindow);
+  tray.on('double-click', showWindow);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 960,
+    width: process.platform === 'darwin' ? 1200 : 1440,
+    height: process.platform === 'darwin' ? 800 : 960,
     minWidth: 1000,
     minHeight: 720,
     backgroundColor: '#f7f8f2',
@@ -173,10 +219,16 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mainWindow.on('close', (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    mainWindow?.hide();
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -188,10 +240,6 @@ function createWindow() {
 }
 
 if (!squirrelStartup && app.requestSingleInstanceLock()) {
-  app.on('second-instance', () => {
-    if (mainWindow?.isMinimized()) mainWindow.restore();
-    mainWindow?.focus();
-  });
   void app.whenReady().then(async () => {
     if (process.platform === 'darwin') {
       app.dock?.setIcon(appIcon);
@@ -227,6 +275,10 @@ if (!squirrelStartup && app.requestSingleInstanceLock()) {
     ipcMain.handle('app:version', (event) => {
       trusted(event);
       return app.getVersion();
+    });
+    ipcMain.on('app:quit', (event) => {
+      trusted(event);
+      app.quit();
     });
     ipcMain.handle('app:check-update', async (event) => {
       trusted(event);
@@ -288,6 +340,7 @@ if (!squirrelStartup && app.requestSingleInstanceLock()) {
           submenu: [
             { label: '导入音乐', accelerator: 'CmdOrCtrl+O', click: () => media('import') },
             { role: 'close' },
+            ...(process.platform === 'darwin' ? [] : [{ role: 'quit' as const }]),
           ],
         },
         {
@@ -320,13 +373,20 @@ if (!squirrelStartup && app.requestSingleInstanceLock()) {
       ]),
     );
     createWindow();
+    createTray();
     configureUpdates();
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
+    app.on('second-instance', showWindow);
+    app.on('activate', showWindow);
   });
 } else if (!squirrelStartup) app.quit();
 
+app.on('before-quit', () => {
+  quitting = true;
+});
+app.on('will-quit', () => {
+  tray?.destroy();
+  tray = null;
+});
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

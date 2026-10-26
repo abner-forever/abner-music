@@ -42,7 +42,8 @@ test('network audio plays after local equalizer activation', async ({ page }) =>
   await page.getByRole('button', { name: '均衡器', exact: true }).click();
   await page.getByRole('button', { name: '爵士', exact: true }).click();
   await page.getByRole('button', { name: '完成', exact: true }).click();
-  await page.getByRole('button', { name: '添加网络音乐', exact: true }).click();
+  await page.getByRole('button', { name: '导入音乐', exact: true }).click();
+  await page.getByRole('button', { name: '添加网络链接', exact: true }).click();
   await page
     .getByPlaceholder('https://example.com/music.mp3')
     .fill('http://127.0.0.1:5173/test-network.wav');

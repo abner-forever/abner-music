@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
+  <defs>
+    <linearGradient id="forest" x2=".8" y2="1">
+      <stop stop-color="#24664d"/>
+      <stop offset="1" stop-color="#173f32"/>
+    </linearGradient>
+  </defs>
+  <rect width="164" height="314" fill="url(#forest)"/>
+  <circle cx="172" cy="300" r="100" fill="none" stroke="#47745b" opacity=".35"/>
+  <circle cx="172" cy="300" r="77" fill="none" stroke="#47745b" opacity=".35"/>
+  <circle cx="172" cy="300" r="54" fill="none" stroke="#47745b" opacity=".35"/>
+  <rect x="22" y="28" width="56" height="56" rx="17" fill="#effbc9" fill-opacity=".08"/>
+  <path d="M37 64V48m9 22V40m10 27V44m9 16V50" fill="none" stroke="#effbc9" stroke-width="5" stroke-linecap="round"/>
+  <g font-family="-apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+    <text x="22" y="122" fill="#f5f8eb" font-size="27" font-weight="650" letter-spacing="-.7">Abner</text>
+    <text x="22" y="153" fill="#f5f8eb" font-size="27" font-weight="650" letter-spacing="-.7">Music</text>
+    <text x="22" y="184" fill="#dcecc3" font-size="12">音乐，自在发生。</text>
+    <text x="22" y="269" fill="#b3c9af" font-size="10" letter-spacing=".3">留一点空间</text>
+    <text x="22" y="287" fill="#b3c9af" font-size="10" letter-spacing=".3">给喜欢的声音</text>
+  </g>
+  <path d="M22 225h34" stroke="#a1bb84" stroke-width="2" stroke-linecap="round"/>
+</svg>

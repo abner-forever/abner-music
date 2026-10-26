@@ -43,6 +43,7 @@ export interface DesktopBridge {
   };
   window: { minimize(): void; maximize(): void; close(): void; mini(enabled: boolean): void };
   app: {
+    quit(): void;
     version(): Promise<string>;
     checkUpdate(): Promise<UpdateStatus>;
     openRelease(): Promise<void>;

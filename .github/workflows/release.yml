@@ -42,9 +42,23 @@ jobs:
         run: npm run test:desktop -- --arch=${{ matrix.arch }}
         env:
           DEBUG: pw:browser
-      - name: Create macOS disk image
+      - name: Verify Windows installation wizard and icons
+        if: runner.os == 'Windows'
+        run: npm run test:installer -- -Architecture ${{ matrix.arch }}
+        env:
+          DEBUG: pw:browser
+      - name: Upload Windows installer screenshots
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-evidence-${{ matrix.arch }}
+          path: test-results/windows-installer/
+          if-no-files-found: ignore
+      - name: Verify installation from macOS disk image
         if: runner.os == 'macOS'
-        run: node scripts/make-dmg.mjs --arch ${{ matrix.arch }}
+        run: npm run test:dmg -- --arch=${{ matrix.arch }}
+        env:
+          DEBUG: pw:browser
       - name: Upload release assets
         uses: actions/upload-artifact@v4
         with:

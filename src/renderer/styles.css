@@ -436,10 +436,6 @@ svg {
   margin-left: auto;
   -webkit-app-region: no-drag;
 }
-.network-top {
-  font-size: 11px;
-  gap: 6px;
-}
 .import-button {
   font-size: 11px;
   min-height: 33px;
@@ -1428,12 +1424,33 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   position: relative;
 }
 .library-hero-art {
+  position: relative;
   height: 180px;
   width: 180px;
   border-radius: 9px;
   overflow: hidden;
   box-shadow: 0 12px 30px #344b3120;
   flex-shrink: 0;
+}
+.playlist-cover-button {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 11px;
+  background: #17231db3;
+  color: #fff;
+  font-size: 12px;
+}
+.playlist-cover-button:hover {
+  background: #17231ddd;
+}
+.playlist-cover-button:focus-visible {
+  outline-offset: -4px;
 }
 .library-hero-copy > h1 {
   font-size: 33px;
@@ -2519,9 +2536,6 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   .search-box {
     width: 240px;
   }
-  .network-top {
-    font-size: 10px;
-  }
   .hero-copy {
     padding-left: 27px;
   }
@@ -2624,9 +2638,6 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   }
 }
 @media (max-width: 1020px) {
-  .network-top {
-    display: none;
-  }
   .main-content {
     padding-left: 23px;
     padding-right: 23px;

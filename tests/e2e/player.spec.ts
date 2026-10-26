@@ -43,7 +43,8 @@ test('playlist creation, searching, liking and preferences survive reload', asyn
 
 test('network audio validates URLs and can be added without autoplay', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '添加网络音乐', exact: true }).click();
+  await page.getByRole('button', { name: '导入音乐', exact: true }).click();
+  await page.getByRole('button', { name: '添加网络链接', exact: true }).click();
   await page.getByPlaceholder('https://example.com/music.mp3').fill('file:///private/test.mp3');
   await page.getByRole('button', { name: '仅添加到音乐库' }).click();
   await expect(page.getByRole('alert')).toContainText('HTTP');
@@ -74,7 +75,7 @@ test('browser local import persists audio and supports synchronized lyrics', asy
   wav.write('data', 36);
   wav.writeUInt32LE(wav.length - 44, 40);
   await page
-    .locator('input[type=file]')
+    .locator('input[type=file][multiple]')
     .setInputFiles({ name: '一首本地音乐.wav', mimeType: 'audio/wav', buffer: wav });
   await page.getByRole('button', { name: '本地', exact: true }).click();
   await expect(page.locator('.track-title')).toHaveText('一首本地音乐');

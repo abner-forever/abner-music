@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="440" viewBox="0 0 660 440">
+  <defs>
+    <radialGradient id="glow" cx="1" cy="0" r="1">
+      <stop stop-color="#dce8c8"/>
+      <stop offset="1" stop-color="#f6f7ee"/>
+    </radialGradient>
+    <marker id="arrow" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="m3 2 4 4-4 4" fill="none" stroke="#638268" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <rect width="660" height="440" fill="url(#glow)"/>
+  <g fill="none" stroke="#dfe6d5" stroke-width="1">
+    <path d="M410 440c42-112 161-48 250-146"/>
+    <path d="M444 440c42-92 138-32 216-118"/>
+    <path d="M478 440c42-72 115-16 182-90"/>
+  </g>
+  <g transform="translate(44 32)">
+    <rect width="28" height="28" rx="8" fill="#24664d"/>
+    <path d="M8 18v-7m4 10V7m5 12V9m4 7v-4" fill="none" stroke="#effbc9" stroke-width="2.2" stroke-linecap="round"/>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+    <text x="83" y="52" fill="#24664d" font-size="19" font-weight="650" letter-spacing="-.4">Abner Music</text>
+    <text x="44" y="112" fill="#203d2e" font-size="29" font-weight="600" letter-spacing="1">音乐，自在发生。</text>
+    <text x="44" y="143" fill="#71816a" font-size="14">将 Abner Music 拖入 Applications，即可完成安装</text>
+    <text x="330" y="222" fill="#819276" font-size="12" text-anchor="middle" letter-spacing="2">拖拽安装</text>
+    <text x="180" y="354" fill="#62775e" font-size="13" text-anchor="middle">1 · 拖动应用</text>
+    <text x="480" y="354" fill="#62775e" font-size="13" text-anchor="middle">2 · 放入应用程序</text>
+    <text x="44" y="408" fill="#829077" font-size="12">安装后，从「应用程序」打开，开始聆听。</text>
+  </g>
+  <path d="M286 248h88" fill="none" stroke="#638268" stroke-width="2" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M44 378h572" stroke="#dce4d2"/>
+</svg>

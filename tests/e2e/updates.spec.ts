@@ -18,6 +18,7 @@ test('update check opens release notes and download uses the desktop bridge', as
       },
       window: { minimize() {}, maximize() {}, close() {}, mini() {} },
       app: {
+        quit() {},
         version: async () => '0.1.0-beta.1',
         checkUpdate: async () => ({ state: 'available', message: '发现新版本', release }),
         openRelease: async () => {

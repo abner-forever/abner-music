@@ -15,6 +15,7 @@ const bridge: DesktopBridge = {
     mini: (enabled) => ipcRenderer.send('window:mini', enabled),
   },
   app: {
+    quit: () => ipcRenderer.send('app:quit'),
     version: () => ipcRenderer.invoke('app:version'),
     checkUpdate: () => ipcRenderer.invoke('app:check-update'),
     openRelease: () => ipcRenderer.invoke('app:open-release'),

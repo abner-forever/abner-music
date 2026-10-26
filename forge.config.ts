@@ -1,5 +1,6 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
+import MakerNSIS from 'electron-forge-maker-nsis';
+import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { PublisherGitHub } from '@electron-forge/publisher-github';
@@ -7,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { prerelease } from 'semver';
 import packageInfo from './package.json';
+import { verifyMacBundle } from './scripts/verify-mac-bundle.mjs';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -36,6 +38,15 @@ const config: ForgeConfig = {
       : {}),
   },
   hooks: {
+    postPackage: async (_forgeConfig, { platform, outputPaths }) => {
+      if (platform === 'darwin') {
+        await Promise.all(
+          outputPaths.map((directory) =>
+            verifyMacBundle(path.join(directory, `${packageInfo.productName}.app`)),
+          ),
+        );
+      }
+    },
     preStart: async () => {
       execFileSync(process.execPath, [path.resolve('scripts/brand-development.mjs')], {
         stdio: 'inherit',
@@ -43,7 +54,45 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerSquirrel({ name: 'abner_music', setupExe: 'AbnerMusicSetup.exe' }),
+    new MakerNSIS({
+      oneClick: false,
+      perMachine: false,
+      selectPerMachineByDefault: false,
+      allowElevation: true,
+      allowToChangeInstallationDirectory: true,
+      runAfterFinish: false,
+      installerIcon: 'build/icon.ico',
+      uninstallerIcon: 'build/icon.ico',
+      installerSidebar: 'build/installer-sidebar.bmp',
+      uninstallerSidebar: 'build/installer-sidebar.bmp',
+      installerHeader: 'build/installer-header.bmp',
+      include: 'build/installer.nsh',
+      installerLanguages: ['zh_CN', 'en_US'],
+      language: '2052',
+      displayLanguageSelector: false,
+      createDesktopShortcut: true,
+      createStartMenuShortcut: true,
+      shortcutName: 'Abner Music',
+      uninstallDisplayName: 'Abner Music',
+      deleteAppDataOnUninstall: false,
+      differentialPackage: false,
+      artifactName: 'Abner-Music-${version}-windows-${arch}.exe',
+    }),
+    new MakerDMG((architecture) => ({
+      name: `Abner-Music-${packageInfo.version}-${architecture}`,
+      title: 'Abner Music',
+      icon: path.resolve('build/icon.icns'),
+      background: path.resolve('build/dmg-background.png'),
+      iconSize: 104,
+      contents: ({ appPath }) => [
+        { x: 180, y: 246, type: 'file', path: appPath },
+        { x: 480, y: 246, type: 'link', path: path.join(path.sep, 'Applications') },
+      ],
+      additionalDMGOptions: {
+        window: { size: { width: 660, height: 440 } },
+        'background-color': '#f6f7ee',
+      },
+    })),
     new MakerZIP({}, ['darwin']),
   ],
   publishers: [
