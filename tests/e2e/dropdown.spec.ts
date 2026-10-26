@@ -60,11 +60,14 @@ test('song sorting supports pointer, keyboard and outside dismissal', async ({
     'aria-selected',
     'true',
   );
-  const arrowInset = await sort.evaluate((element) => {
-    const arrow = element.querySelector('svg')!.getBoundingClientRect();
-    return element.getBoundingClientRect().right - arrow.right;
-  });
-  expect(arrowInset).toBeGreaterThanOrEqual(12);
+  await expect
+    .poll(() =>
+      sort.evaluate((element) => {
+        const arrow = element.querySelector('svg')!.getBoundingClientRect();
+        return element.getBoundingClientRect().right - arrow.right;
+      }),
+    )
+    .toBeGreaterThanOrEqual(12);
   await page.waitForTimeout(350);
   await page.screenshot({ path: testInfo.outputPath('sort-dropdown.png') });
   await page.getByRole('option', { name: '歌曲名称' }).click();
