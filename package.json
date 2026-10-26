@@ -1,0 +1,64 @@
+{
+  "name": "abner-music",
+  "productName": "Abner Music",
+  "version": "0.1.0-beta.1",
+  "type": "module",
+  "description": "A little space for the music you love. 本地与网络音乐桌面播放器。",
+  "main": ".vite/build/main.cjs",
+  "author": {
+    "name": "Abner",
+    "url": "https://github.com/abner-forever"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abner-forever/abner-music.git"
+  },
+  "private": true,
+  "scripts": {
+    "postinstall": "node scripts/install-electron.mjs",
+    "start": "electron-forge start",
+    "dev": "vite --config vite.renderer.config.ts --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build --config vite.renderer.config.ts",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/unit/*.test.ts",
+    "test:e2e": "playwright test",
+    "test:desktop": "node tests/desktop/smoke.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "make:dmg": "electron-forge make && node scripts/make-dmg.mjs",
+    "publish": "electron-forge publish",
+    "preview": "vite preview --config vite.renderer.config.ts --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@lucide/vue": "^1.61.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "music-metadata": "^12.3.2",
+    "semver": "^7.8.5",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^8.0.1",
+    "@electron-forge/maker-squirrel": "^8.0.1",
+    "@electron-forge/maker-zip": "^8.0.1",
+    "@electron-forge/plugin-vite": "^8.0.1",
+    "@electron-forge/publisher-github": "^8.0.1",
+    "@electron-forge/shared-types": "^8.0.1",
+    "@playwright/test": "^1.56.0",
+    "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/node": "^24.0.0",
+    "@types/semver": "^7.8.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "electron": "^45.0.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "vite": "^7.0.0",
+    "vue-tsc": "^3.1.0"
+  },
+  "allowScripts": {
+    "electron": true,
+    "electron-winstaller": true,
+    "esbuild": true
+  }
+}

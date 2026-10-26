@@ -1,0 +1,90 @@
+name: Build desktop release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+          - os: macos-latest
+            platform: darwin
+            arch: x64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Validate release version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e 'if (`v${require("./package.json").version}` !== process.env.RELEASE_TAG) throw new Error("Tag must match package.json version")'
+      - run: npm run typecheck
+      - run: npm test
+      - name: Make installers
+        run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+      - name: Create macOS disk image
+        if: runner.os == 'macOS'
+        run: node scripts/make-dmg.mjs --arch ${{ matrix.arch }}
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform }}-${{ matrix.arch }}
+          path: out/make/**
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: installers
+      - name: Validate installers and generate checksums
+        run: node scripts/prepare-release.mjs installers
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+      - name: Create draft GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [[ "$RELEASE_TAG" == *-beta.* ]]; then
+              gh release create "$RELEASE_TAG" --draft --prerelease --verify-tag --title "Abner Music $RELEASE_TAG" --notes-file .github/release-beta.md
+            else
+              gh release create "$RELEASE_TAG" --draft --verify-tag --title "Abner Music $RELEASE_TAG" --generate-notes
+            fi
+          fi
+          find installers -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name 'SHA256SUMS.txt' \) -print0 | xargs -0 gh release upload "$RELEASE_TAG" --clobber
+      - name: Publish Beta release
+        if: contains(github.ref_name, '-beta.')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
