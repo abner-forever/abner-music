@@ -1,6 +1,6 @@
 音乐，自在发生。Abner Music Beta 测试版本。
 
-### Beta.2 修复
+### Beta.3 修复
 
 - 修复安装后启动时提示 `Cannot find module 'electron-squirrel-startup'` 的问题，将启动依赖一并打入应用。
 - 修复打包时遗漏应用图标资源导致 macOS 窗口无法打开的问题。
