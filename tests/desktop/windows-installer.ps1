@@ -3,6 +3,27 @@ param([string]$Architecture = 'x64')
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Installer verification requires Windows' }
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class InstallerNative {
+  [DllImport("user32.dll")]
+  public static extern bool SetForegroundWindow(IntPtr window);
+
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetDlgItem(IntPtr dialog, int identifier);
+
+  [DllImport("user32.dll")]
+  public static extern bool IsWindowEnabled(IntPtr window);
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr parameter, IntPtr value);
+
+  [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode)]
+  public static extern IntPtr SendText(IntPtr window, uint message, IntPtr parameter, string value);
+}
+'@
 
 $package = Get-Content (Join-Path $PSScriptRoot '../../package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $project = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -41,13 +62,13 @@ function Get-DialogText {
 }
 
 function Invoke-Next {
-  $button = $script:window.FindFirst(
-    [Windows.Automation.TreeScope]::Descendants,
-    [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, '1')
-  )
-  if (!$button -or !$button.Current.IsEnabled) { throw "Wizard button unavailable: $(Get-DialogText)" }
-  $pattern = $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
-  $pattern.Invoke()
+  $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
+  $button = [InstallerNative]::GetDlgItem($dialog, 1)
+  if ($button -eq [IntPtr]::Zero -or ![InstallerNative]::IsWindowEnabled($button)) {
+    throw "Wizard button unavailable: $(Get-DialogText)"
+  }
+  [void][InstallerNative]::SetForegroundWindow($dialog)
+  [void][InstallerNative]::SendMessage($button, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)
 }
 
 function Save-Dialog([string]$Name) {
@@ -116,8 +137,9 @@ try {
   if (!$directoryEdit -or !$directoryEdit.Current.IsEnabled -or $directoryEdit.Current.IsOffscreen) {
     throw "Installation directory page missing: $(Get-DialogText)"
   }
-  $value = $directoryEdit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
-  $value.SetValue($installation)
+  $directoryHandle = [IntPtr]$directoryEdit.Current.NativeWindowHandle
+  if ($directoryHandle -eq [IntPtr]::Zero) { throw 'Installation directory control has no native handle' }
+  [void][InstallerNative]::SendText($directoryHandle, 0x000C, [IntPtr]::Zero, $installation)
   Save-Dialog 'directory'
   if (Test-Path $executable) { throw 'Application was installed before clicking Install' }
   Invoke-Next
