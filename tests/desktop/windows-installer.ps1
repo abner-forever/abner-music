@@ -6,6 +6,16 @@ Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+using System.Text;
+
+[ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+class InstallerShellLink { }
+
+[ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface InstallerShellLinkUnicode {
+  void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path, int capacity, IntPtr findData, uint flags);
+}
 
 public static class InstallerNative {
   [DllImport("user32.dll")]
@@ -34,6 +44,18 @@ public static class InstallerNative {
 
   [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode)]
   public static extern IntPtr SendText(IntPtr window, uint message, IntPtr parameter, string value);
+
+  public static string GetShortcutTarget(string filename) {
+    var link = new InstallerShellLink();
+    try {
+      ((IPersistFile)link).Load(filename, 0);
+      var path = new StringBuilder(32768);
+      ((InstallerShellLinkUnicode)link).GetPath(path, path.Capacity, IntPtr.Zero, 4);
+      return path.ToString();
+    } finally {
+      Marshal.FinalReleaseComObject(link);
+    }
+  }
 }
 '@
 
@@ -250,13 +272,13 @@ try {
   }
   Assert-BrandedIcon $executable
   Assert-BrandedIcon $uninstaller
-  $shell = New-Object -ComObject WScript.Shell
   foreach ($shortcut in @(
     (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Abner Music.lnk'),
     (Join-Path ([Environment]::GetFolderPath('Programs')) 'Abner Music.lnk')
   )) {
     if (!(Test-Path $shortcut)) { throw "Shortcut missing: $shortcut" }
-    $shortcutTarget = $shell.CreateShortcut($shortcut).TargetPath
+    Copy-Item $shortcut (Join-Path $evidence "$([IO.Path]::GetFileName([IO.Path]::GetDirectoryName($shortcut))).lnk")
+    $shortcutTarget = [InstallerNative]::GetShortcutTarget($shortcut)
     Write-Host "Shortcut target: $($shortcutTarget | ConvertTo-Json -Compress); expected: $($executable | ConvertTo-Json -Compress)"
     if ((Resolve-InstallerPath $shortcutTarget) -ne (Resolve-InstallerPath $executable)) {
       throw "Wrong shortcut target: $shortcut; actual: $shortcutTarget; expected: $executable"
