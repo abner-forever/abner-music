@@ -129,6 +129,7 @@ Function AbnerGuiInit
   CreateFont $AbnerSmallFont "Microsoft YaHei UI" 9
   System::Call 'user32::GetWindowLong(p $HWNDPARENT, i -16) i.r0'
   IntOp $0 $0 & 0xFF3BFFFF
+  IntOp $0 $0 | ${WS_CLIPCHILDREN}
   System::Call 'user32::SetWindowLong(p $HWNDPARENT, i -16, i r0)'
   System::Call 'user32::GetWindowLong(p $HWNDPARENT, i -20) i.r0'
   IntOp $0 $0 & 0xFFFDFCFE
@@ -140,7 +141,7 @@ Function AbnerGuiInit
     ShowWindow $0 ${SW_HIDE}
     System::Call 'user32::GetWindow(p r0, i 2) p.r0'
   ${Loop}
-  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "", i 0x5000000E, i 0, i 0, i 0, i 0, p $HWNDPARENT, p 0, p 0, p 0) p.s'
+  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "", i 0x5400000E, i 0, i 0, i 0, i 0, p $HWNDPARENT, p 0, p 0, p 0) p.s'
   Pop $AbnerBackground
   !insertmacro AbnerMove $AbnerBackground 0 0 800 520
   ${NSD_SetStretchedImage} $AbnerBackground "$PLUGINSDIR\abner-background.bmp" $AbnerBackgroundImage
