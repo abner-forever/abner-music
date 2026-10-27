@@ -124,3 +124,40 @@ for (const size of [
     await expect(page.getByRole('dialog', { name: '偏好设置' })).toBeVisible();
   });
 }
+
+test('sidebar scrollbar track reaches the panel edge while content keeps its inset', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'abner:library',
+      JSON.stringify({
+        playlists: Array.from({ length: 24 }, (_, index) => ({
+          id: `playlist-${index}`,
+          name: `长列表歌单 ${index + 1}`,
+          trackIds: [],
+          artwork: 'forest',
+        })),
+      }),
+    );
+  });
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await page.goto('/');
+  const geometry = await page.locator('.sidebar').evaluate((sidebar) => {
+    const navigation = sidebar.querySelector('.sidebar-navigation') as HTMLElement;
+    const sidebarBounds = sidebar.getBoundingClientRect();
+    const navigationBounds = navigation.getBoundingClientRect();
+    const style = getComputedStyle(navigation);
+    return {
+      sidebarRight: sidebarBounds.right,
+      navigationRight: navigationBounds.right,
+      scrollable: navigation.scrollHeight > navigation.clientHeight,
+      paddingRight: style.paddingRight,
+      scrollbarGutter: style.scrollbarGutter,
+    };
+  });
+  expect(geometry.scrollable).toBe(true);
+  expect(geometry.sidebarRight - geometry.navigationRight).toBeLessThanOrEqual(1);
+  expect(geometry.paddingRight).toBe('13px');
+  expect(geometry.scrollbarGutter).toBe('stable');
+});

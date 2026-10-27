@@ -10,6 +10,9 @@ const bridge: DesktopBridge = {
     lyrics: (remote, requestId) => ipcRenderer.invoke('music:lyrics', remote, requestId),
     cancel: (requestId) => ipcRenderer.send('music:cancel', requestId),
   },
+  download: {
+    audio: (input) => ipcRenderer.invoke('download:audio', input),
+  },
   library: {
     list: () => ipcRenderer.invoke('library:list'),
     importFiles: (folder = false) => ipcRenderer.invoke('library:import', folder),

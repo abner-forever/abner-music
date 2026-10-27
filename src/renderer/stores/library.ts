@@ -13,29 +13,40 @@ interface LibraryState {
 }
 
 const saved = readState<Partial<LibraryState>>('abner:library', {});
+export const demoEnabled = import.meta.env.DEV;
+const builtInTracks = demoEnabled ? demoTracks : [];
+const availableId = (id: string) => demoEnabled || !id.startsWith('demo-');
 export const library = reactive<LibraryState>({
   tracks: [
-    ...demoTracks,
+    ...builtInTracks,
     ...(Array.isArray(saved.tracks) ? saved.tracks.filter((track) => track.kind !== 'demo') : []),
   ],
-  favorites: saved.favorites || ['demo-1', 'demo-3'],
-  playlists: saved.playlists || [
-    {
-      id: 'playlist-chill',
-      name: '给自己的留白',
-      description: '忙碌之外，留一点时间给喜欢的声音。',
-      artwork: 'forest',
-      trackIds: ['demo-1', 'demo-2', 'demo-5'],
-    },
-    {
-      id: 'playlist-night',
-      name: '晚风与耳机',
-      description: '在夜色里，和自己待一会儿。',
-      artwork: 'space',
-      trackIds: ['demo-3', 'demo-4', 'demo-6'],
-    },
-  ],
-  history: saved.history || [],
+  favorites: (saved.favorites || (demoEnabled ? ['demo-1', 'demo-3'] : [])).filter(availableId),
+  playlists: (
+    saved.playlists ||
+    (demoEnabled
+      ? [
+          {
+            id: 'playlist-chill',
+            name: '给自己的留白',
+            description: '忙碌之外，留一点时间给喜欢的声音。',
+            artwork: 'forest',
+            trackIds: ['demo-1', 'demo-2', 'demo-5'],
+          },
+          {
+            id: 'playlist-night',
+            name: '晚风与耳机',
+            description: '在夜色里，和自己待一会儿。',
+            artwork: 'space',
+            trackIds: ['demo-3', 'demo-4', 'demo-6'],
+          },
+        ]
+      : [])
+  ).map((playlist) => ({
+    ...playlist,
+    trackIds: playlist.trackIds.filter(availableId),
+  })),
+  history: (saved.history || []).filter(availableId),
   lyrics: saved.lyrics || {},
 });
 
@@ -84,7 +95,7 @@ export async function initializeLibrary() {
   if (!window.desktop) return;
   const tracks = await window.desktop.library.list();
   library.tracks = [
-    ...demoTracks,
+    ...builtInTracks,
     ...library.tracks.filter((track) => track.kind === 'network'),
     ...tracks,
   ];

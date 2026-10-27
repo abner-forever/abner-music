@@ -32,7 +32,7 @@ import {
   Trash2,
   X,
 } from '@lucide/vue';
-import type { Track, UpdateStatus } from '../shared/types';
+import type { MusicPlatform, Track, UpdateStatus } from '../shared/types';
 import packageInfo from '../../package.json';
 import AppSelect from './components/AppSelect.vue';
 import CoverArt from './components/CoverArt.vue';
@@ -45,6 +45,7 @@ import { readState } from './lib/storage';
 import {
   addNetworkTrack,
   createPlaylist,
+  demoEnabled,
   favoriteTracks,
   importBrowserFiles,
   importMusic,
@@ -122,7 +123,7 @@ const releaseDate = computed(() => {
 const preferences = ref(
   readState<{ theme: 'light' | 'dark' | 'system'; showDemos: boolean }>('abner:preferences', {
     theme: 'system',
-    showDemos: true,
+    showDemos: demoEnabled,
   }),
 );
 const systemAppearance = window.matchMedia('(prefers-color-scheme: dark)');
@@ -143,9 +144,29 @@ const historyIndex = ref(0);
 const isDesktop = Boolean(window.desktop);
 const desktop = window.desktop;
 const platform = window.desktop?.platform || 'browser';
+const showDemos = computed(() => demoEnabled && preferences.value.showDemos);
 const allTracks = computed(() =>
-  library.tracks.filter((track) => preferences.value.showDemos || track.kind !== 'demo'),
+  library.tracks.filter((track) => showDemos.value || track.kind !== 'demo'),
 );
+const matchingTracks = computed(() => {
+  const query = search.value.toLocaleLowerCase().trim();
+  return allTracks.value.filter((track) =>
+    `${track.title} ${track.artist} ${track.album}`.toLocaleLowerCase().includes(query),
+  );
+});
+const submittedSearch = ref('');
+const searchRevision = ref(0);
+const searchPlatform = ref<MusicPlatform>('netease');
+const searchOnline = computed(() => Boolean(submittedSearch.value));
+watch(search, () => {
+  submittedSearch.value = '';
+});
+function submitOnlineSearch(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229 || !search.value.trim()) return;
+  event.preventDefault();
+  submittedSearch.value = search.value.trim();
+  searchRevision.value++;
+}
 const selectedPlaylist = computed(() =>
   library.playlists.find((playlist) => `playlist:${playlist.id}` === page.value),
 );
@@ -170,10 +191,7 @@ const title = computed(() =>
 const pageTracks = computed(() => {
   let tracks = allTracks.value;
   if (search.value.trim()) {
-    const query = search.value.toLocaleLowerCase().trim();
-    tracks = tracks.filter((track) =>
-      `${track.title} ${track.artist} ${track.album}`.toLocaleLowerCase().includes(query),
-    );
+    tracks = matchingTracks.value;
   } else if (page.value === 'favorites')
     tracks = favoriteTracks.value.filter((track) => allTracks.value.includes(track));
   else if (page.value === 'recent')
@@ -185,7 +203,8 @@ const pageTracks = computed(() => {
       .map((id) => allTracks.value.find((track) => track.id === id))
       .filter((track): track is Track => Boolean(track));
   }
-  if (filter.value !== 'all') tracks = tracks.filter((track) => track.kind === filter.value);
+  if (!search.value.trim() && filter.value !== 'all')
+    tracks = tracks.filter((track) => track.kind === filter.value);
   if (sort.value === 'title')
     tracks = [...tracks].sort((first, second) => first.title.localeCompare(second.title, 'zh-CN'));
   else if (sort.value === 'duration')
@@ -195,9 +214,9 @@ const pageTracks = computed(() => {
   return tracks;
 });
 const discoveryTracks = computed(() =>
-  recentTracks.value.length
-    ? recentTracks.value.slice(0, 4)
-    : library.tracks.filter((track) => track.kind === 'demo').slice(0, 4),
+  (recentTracks.value.length ? recentTracks.value : allTracks.value)
+    .filter((track) => allTracks.value.includes(track))
+    .slice(0, 4),
 );
 const localCount = computed(() => library.tracks.filter((track) => track.kind === 'local').length);
 const lyricsValue = computed(() =>
@@ -404,7 +423,7 @@ function deletePlaylist() {
 }
 function playCollection(ids: string[]) {
   const tracks = ids
-    .map((id) => library.tracks.find((track) => track.id === id))
+    .map((id) => allTracks.value.find((track) => track.id === id))
     .filter((track): track is Track => Boolean(track));
   if (tracks[0]) void playTrack(tracks[0], tracks);
 }
@@ -717,6 +736,9 @@ onUnmounted(() => {
             v-model="search"
             placeholder="搜索歌曲、艺术家、专辑"
             aria-label="搜索音乐"
+            aria-description="输入关键词匹配音乐库，按回车搜索在线音乐"
+            maxlength="120"
+            @keydown.enter="submitOnlineSearch"
           /><button v-if="search" class="icon-button" aria-label="清空搜索" @click="search = ''">
             <X :size="14" /></button
           ><kbd v-else>{{ platform === 'darwin' ? '⌘' : 'Ctrl' }} K</kbd></label
@@ -778,11 +800,19 @@ onUnmounted(() => {
                 <button
                   class="button button-dark"
                   @click="
-                    playCollection(['demo-1', 'demo-2', 'demo-3', 'demo-4', 'demo-5', 'demo-6'])
+                    allTracks.length
+                      ? playCollection(allTracks.map((track) => track.id))
+                      : importLocal()
                   "
                 >
-                  <Play :size="15" fill="currentColor" />即刻聆听</button
-                ><span>6 首原创轻音乐<span class="small-divider">/</span>让心情慢下来</span>
+                  <Play v-if="allTracks.length" :size="15" fill="currentColor" /><Plus
+                    v-else
+                    :size="15"
+                  />{{ allTracks.length ? '即刻聆听' : '导入第一首音乐' }}</button
+                ><span
+                  >{{ showDemos ? '6 首原创轻音乐' : '收藏喜欢的声音'
+                  }}<span class="small-divider">/</span>让心情慢下来</span
+                >
               </div>
             </div>
             <div class="hero-art" aria-hidden="true">
@@ -806,7 +836,7 @@ onUnmounted(() => {
               <span class="hero-art-caption">SOMEWHERE BETWEEN SOUND & SILENCE</span>
             </div>
           </section>
-          <section class="collections-section">
+          <section v-if="showDemos" class="collections-section">
             <div class="section-heading">
               <div>
                 <h2>听见此刻</h2>
@@ -912,7 +942,9 @@ onUnmounted(() => {
 
         <template v-else>
           <section
-            v-if="selectedPlaylist || selectedCollection || page === 'favorites'"
+            v-if="
+              !search.trim() && (selectedPlaylist || selectedCollection || page === 'favorites')
+            "
             class="library-hero"
           >
             <div class="library-hero-art">
@@ -981,7 +1013,9 @@ onUnmounted(() => {
               <p>
                 {{
                   search
-                    ? `关于「${search}」的 ${pageTracks.length} 个结果`
+                    ? searchOnline
+                      ? `「${submittedSearch}」的音乐库与在线结果`
+                      : `音乐库匹配到 ${pageTracks.length} 首歌曲 · 按回车搜索在线音乐`
                     : page === 'recent'
                       ? '音乐会记得，那些曾经共鸣的时刻。'
                       : page === 'network'
@@ -991,13 +1025,13 @@ onUnmounted(() => {
               </p>
             </div>
             <button
-              v-if="page === 'network'"
+              v-if="page === 'network' && !search.trim()"
               class="button button-dark"
               @click="openModal('network')"
             >
               <Plus :size="17" />添加网络音乐</button
             ><button
-              v-else-if="page === 'library'"
+              v-else-if="page === 'library' && !search.trim()"
               class="button button-dark"
               @click="importLocal()"
             >
@@ -1016,8 +1050,23 @@ onUnmounted(() => {
               在线搜索
             </button>
           </div>
+          <section
+            v-if="searchOnline && pageTracks.length"
+            class="search-library-results"
+            aria-label="音乐库匹配结果"
+          >
+            <div class="search-library-heading">
+              <h2>音乐库</h2>
+              <span>{{ pageTracks.length }} 首歌曲</span>
+            </div>
+            <TrackTable :tracks="pageTracks" @menu="openContextMenu" @add="addPlaylist" />
+          </section>
           <OnlineMusic
-            v-if="page === 'network' && !search && networkTab === 'online'"
+            v-if="searchOnline || (page === 'network' && !search && networkTab === 'online')"
+            :key="searchOnline ? 'global-search' : 'network-search'"
+            v-model:platform="searchPlatform"
+            :search-term="submittedSearch"
+            :search-revision="searchRevision"
             @add="addPlaylist"
             @notice="toast"
           />
@@ -1040,7 +1089,10 @@ onUnmounted(() => {
                 ><span>{{ pageTracks.length }} 首音乐</span>
               </div>
               <div class="library-toolbar-right">
-                <div v-if="page !== 'network' && page !== 'recent'" class="filter-tabs">
+                <div
+                  v-if="!search.trim() && page !== 'network' && page !== 'recent'"
+                  class="filter-tabs"
+                >
                   <button :class="{ active: filter === 'all' }" @click="filter = 'all'">全部</button
                   ><button :class="{ active: filter === 'local' }" @click="filter = 'local'">
                     本地</button
@@ -1064,11 +1116,12 @@ onUnmounted(() => {
               :tracks="pageTracks"
               :empty-text="
                 search
-                  ? '没有找到相关音乐'
+                  ? '音乐库中没有匹配的歌曲'
                   : page === 'favorites'
                     ? '收藏你的第一首心动'
                     : undefined
               "
+              :empty-description="search.trim() ? '按回车搜索在线音乐，发现更多歌曲。' : undefined"
               @menu="openContextMenu"
               @add="addPlaylist"
             />
@@ -1418,7 +1471,7 @@ onUnmounted(() => {
                 </button>
               </div>
             </div>
-            <div class="setting-row">
+            <div v-if="demoEnabled" class="setting-row">
               <div><strong>显示原创试听</strong><span>6 首内置音乐，无需网络即可聆听</span></div>
               <button
                 class="switch"

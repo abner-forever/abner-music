@@ -85,14 +85,20 @@ defineEmits<{ queue: []; lyrics: []; equalizer: []; mini: [] }>();
         </button>
         <button
           class="play-toggle"
+          :class="{ 'is-loading': player.loading }"
           :aria-label="player.loading ? '取消加载' : player.playing ? '暂停' : '播放'"
+          :aria-busy="player.loading"
+          :aria-pressed="player.playing || player.loading"
+          :disabled="!currentTrack"
           @click="togglePlay"
         >
-          <LoaderCircle v-if="player.loading" :size="20" class="spin" /><Pause
-            v-else-if="player.playing"
+          <Pause v-show="player.playing || player.loading" :size="20" fill="currentColor" /><Play
+            v-show="!player.playing && !player.loading"
             :size="20"
             fill="currentColor"
-          /><Play v-else :size="20" fill="currentColor" class="play-icon" />
+            class="play-icon"
+          />
+          <LoaderCircle :size="46" class="play-loading-ring" aria-hidden="true" />
         </button>
         <button class="icon-button skip-button" aria-label="下一首" @click="nextTrack()">
           <SkipForward :size="20" fill="currentColor" />

@@ -6,7 +6,7 @@ import { library, toggleFavorite } from '../stores/library';
 import { player, playTrack, togglePlay } from '../stores/player';
 import CoverArt from './CoverArt.vue';
 import { musicPlatforms } from '../../shared/gd-music';
-defineProps<{ tracks: Track[]; emptyText?: string }>();
+defineProps<{ tracks: Track[]; emptyText?: string; emptyDescription?: string }>();
 defineEmits<{ menu: [track: Track, event: MouseEvent]; add: [track: Track] }>();
 </script>
 
@@ -88,7 +88,7 @@ defineEmits<{ menu: [track: Track, event: MouseEvent]; add: [track: Track] }>();
     <div v-if="!tracks.length" class="empty-state">
       <Music2 :size="34" :stroke-width="1.2" />
       <h3>{{ emptyText || '这里还没有音乐' }}</h3>
-      <p>导入喜欢的歌曲，让音乐慢慢填满这里。</p>
+      <p>{{ emptyDescription || '导入喜欢的歌曲，让音乐慢慢填满这里。' }}</p>
     </div>
   </div>
 </template>

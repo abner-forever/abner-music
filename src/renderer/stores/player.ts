@@ -16,7 +16,7 @@ const saved = readState<{
   volume: 0.65,
   repeat: 'all',
   shuffle: false,
-  trackId: 'demo-1',
+  trackId: library.tracks[0]?.id || '',
   queue: library.tracks.map((track) => track.id),
 });
 const localAudio = new Audio();
@@ -25,7 +25,7 @@ const networkAudio = new Audio();
 export let audio = localAudio;
 audio.preload = 'metadata';
 export const player = reactive({
-  trackId: saved.trackId || 'demo-1',
+  trackId: saved.trackId || library.tracks[0]?.id || '',
   queue: saved.queue || library.tracks.map((track) => track.id),
   playing: false,
   loading: false,
@@ -91,7 +91,7 @@ for (const element of [localAudio, networkAudio]) {
     if (audio === element) player.loading = true;
   });
   element.addEventListener('canplay', () => {
-    if (audio === element) player.loading = false;
+    if (audio === element && audio.paused) player.loading = false;
   });
   element.addEventListener('error', () => {
     if (audio !== element) return;
@@ -238,7 +238,7 @@ export async function playTrack(
   if (!player.queue.includes(track.id)) player.queue.push(track.id);
   player.trackId = track.id;
   player.error = '';
-  player.loading = true;
+  player.loading = loadedId !== track.id || refresh;
   if (loadedId !== track.id || refresh) {
     loadedId = '';
     audio.pause();

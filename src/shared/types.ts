@@ -26,6 +26,18 @@ export interface MusicLyrics {
   translation: string;
 }
 
+export interface AudioDownloadRequest {
+  remote: GdMusicReference;
+  quality: MusicQuality;
+  suggestedName: string;
+  format: string;
+}
+
+export interface AudioDownloadResult {
+  saved: boolean;
+  fileName?: string;
+}
+
 export interface MusicBridge {
   search(input: MusicSearch, requestId: string): Promise<Track[]>;
   resolve(input: MusicResolution, requestId: string): Promise<{ url: string; quality: number }>;
@@ -75,6 +87,9 @@ export interface UpdateStatus {
 export interface DesktopBridge {
   platform: string;
   music: MusicBridge;
+  download?: {
+    audio(input: AudioDownloadRequest): Promise<AudioDownloadResult>;
+  };
   library: {
     list(): Promise<Track[]>;
     importFiles(folder?: boolean): Promise<{ tracks: Track[]; skipped: number }>;

@@ -16,6 +16,52 @@ test('original music plays, seeks and moves to the next track', async ({ page })
   expect(errors).toEqual([]);
 });
 
+test('playback controls keep their geometry and icons across repeated clicks', async ({ page }) => {
+  await page.goto('/');
+  const control = page.locator('.play-toggle');
+  const initialBounds = await control.boundingBox();
+  await control.evaluate((element) => {
+    Reflect.set(window, 'playbackIcons', Array.from(element.children));
+  });
+  for (let index = 0; index < 3; index++) {
+    await control.click();
+    await expect(control).toHaveAttribute('aria-label', '暂停');
+    await expect(control).toHaveAttribute('aria-busy', 'false');
+    await expect(control.locator('.lucide-pause')).toBeVisible();
+    await expect(control.locator('.play-icon')).toBeHidden();
+    expect(await control.boundingBox()).toEqual(initialBounds);
+    await control.click();
+    await expect(control).toHaveAttribute('aria-label', '播放');
+    await expect(control.locator('.play-icon')).toBeVisible();
+    await expect(control.locator('.lucide-pause')).toBeHidden();
+    expect(await control.boundingBox()).toEqual(initialBounds);
+  }
+  expect(
+    await control.evaluate((element) => {
+      const icons = Reflect.get(window, 'playbackIcons') as Element[];
+      return icons.every((icon, index) => icon === element.children[index]);
+    }),
+  ).toBe(true);
+});
+
+test('original previews play offline and the display preference hides discovery demos', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/');
+  await context.setOffline(true);
+  await page.getByRole('button', { name: '即刻聆听' }).click();
+  await expect(page.locator('.play-toggle')).toHaveAttribute('aria-label', '暂停');
+  await page.getByRole('button', { name: /设置 v/ }).click();
+  const previews = page.getByRole('switch', { name: '显示原创试听' });
+  await expect(previews).toHaveAttribute('aria-checked', 'true');
+  await previews.click();
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+  await expect(page.locator('.collections-section')).toHaveCount(0);
+  await expect(page.locator('.track-row')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '导入第一首音乐' })).toBeVisible();
+});
+
 test('playlist creation, searching, liking and preferences survive reload', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '创建歌单', exact: true }).click();
