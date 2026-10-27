@@ -171,7 +171,11 @@ try {
   if (!$options) { throw 'Installation options toggle missing' }
   $currentUser = Get-Control '4204'
   if ($currentUser -and !$currentUser.Current.IsOffscreen) { throw 'Installation options should initially be collapsed' }
-  $options.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+  $optionsHandle = [IntPtr]$options.Current.NativeWindowHandle
+  if ($optionsHandle -eq [IntPtr]::Zero) { throw 'Installation options control has no native handle' }
+  [void][InstallerNative]::SetForegroundWindow([IntPtr]$script:window.Current.NativeWindowHandle)
+  [void][InstallerNative]::SendMessage($optionsHandle, 0x0201, [IntPtr]1, [IntPtr]::Zero)
+  [void][InstallerNative]::SendMessage($optionsHandle, 0x0202, [IntPtr]::Zero, [IntPtr]::Zero)
   Wait-For {
     $scopeControl = Get-Control '4204'
     return $scopeControl -and !$scopeControl.Current.IsOffscreen
