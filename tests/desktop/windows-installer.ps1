@@ -26,6 +26,9 @@ public static class InstallerNative {
   [DllImport("user32.dll")]
   public static extern uint GetDpiForWindow(IntPtr window);
 
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+  public static extern uint GetLongPathName(string shortPath, System.Text.StringBuilder longPath, uint length);
+
   [DllImport("user32.dll", CharSet = CharSet.Unicode)]
   public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr parameter, IntPtr value);
 
@@ -158,6 +161,13 @@ function Get-IconDigest([string]$Filename) {
   }
 }
 
+function Resolve-InstallerPath([string]$Filename) {
+  $buffer = [Text.StringBuilder]::new(32768)
+  $length = [InstallerNative]::GetLongPathName([IO.Path]::GetFullPath($Filename), $buffer, $buffer.Capacity)
+  if ($length -eq 0 -or $length -ge $buffer.Capacity) { throw "Cannot resolve installed path: $Filename" }
+  return $buffer.ToString()
+}
+
 $installer = $null
 try {
   Assert-BrandedIcon $artifact
@@ -241,7 +251,10 @@ try {
     (Join-Path ([Environment]::GetFolderPath('Programs')) 'Abner Music.lnk')
   )) {
     if (!(Test-Path $shortcut)) { throw "Shortcut missing: $shortcut" }
-    if ($shell.CreateShortcut($shortcut).TargetPath -ne $executable) { throw "Wrong shortcut target: $shortcut" }
+    $shortcutTarget = $shell.CreateShortcut($shortcut).TargetPath
+    if ((Resolve-InstallerPath $shortcutTarget) -ne (Resolve-InstallerPath $executable)) {
+      throw "Wrong shortcut target: $shortcut; actual: $shortcutTarget; expected: $executable"
+    }
   }
   & node (Join-Path $PSScriptRoot 'smoke.mjs') "--arch=$Architecture" "--executable=$executable"
   if ($LASTEXITCODE -ne 0) { throw 'Installed application smoke test failed' }
