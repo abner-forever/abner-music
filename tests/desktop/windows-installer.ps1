@@ -59,7 +59,7 @@ function Wait-For([scriptblock]$Condition, [string]$Description, [int]$Seconds =
     if (& $Condition) { return }
     Start-Sleep -Milliseconds 200
   }
-  throw "Timed out: $Description"
+  throw "Timed out: $Description`n$(Get-DialogText)"
 }
 
 function Get-DialogText {
@@ -246,6 +246,11 @@ try {
   & node (Join-Path $PSScriptRoot 'smoke.mjs') "--arch=$Architecture" "--executable=$executable"
   if ($LASTEXITCODE -ne 0) { throw 'Installed application smoke test failed' }
   Write-Host 'Windows installer passed: custom borderless UI, cancellation, options, directory validation, Unicode paths, progress/finish, no automatic launch, icons, shortcuts and installed application smoke.'
+} catch {
+  if ($script:window) {
+    try { Save-Dialog 'failure' } catch { Write-Warning 'Unable to capture the failed installer dialog' }
+  }
+  throw
 } finally {
   if ($installer -and !$installer.HasExited) { Stop-Process -Id $installer.Id -Force }
   if (Test-Path $uninstaller) {
