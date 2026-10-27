@@ -116,7 +116,7 @@ try {
     .toBe(true);
   await page.locator('.topbar .import-button').click({ trial: true });
   await page.locator('.settings-nav').click();
-  await expect(page.getByRole('dialog', { name: '偏好设置' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible();
   await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
   await application.evaluate(({ BrowserWindow, nativeTheme }) => {
     BrowserWindow.getAllWindows()[0].setContentSize(1440, 960);
@@ -171,6 +171,7 @@ try {
     .toBe(true);
   assert.equal(application.windows().length, 1);
   await page.locator('.settings-nav').click();
+  await page.locator('.settings-tabs').getByRole('button', { name: '窗口' }).click();
   await page.getByRole('button', { name: '转入后台', exact: true }).click();
   await expect
     .poll(() =>
@@ -334,6 +335,7 @@ try {
     'aria-pressed',
     'true',
   );
+  await page.locator('.settings-tabs').getByRole('button', { name: '关于' }).click();
   await page.getByRole('button', { name: '检查更新', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '发现新版本' })).toBeVisible();
   await expect(page.getByLabel('更新日志')).toContainText('验证原生检查更新');

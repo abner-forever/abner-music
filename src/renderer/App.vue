@@ -935,7 +935,7 @@ onUnmounted(() => {
           </div>
           <span class="topbar-divider" /><button
             class="avatar"
-            aria-label="打开偏好设置"
+            aria-label="打开设置"
             @click="openModal('settings')"
           >
             a<span />
