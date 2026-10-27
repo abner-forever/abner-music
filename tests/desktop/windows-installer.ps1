@@ -163,7 +163,12 @@ function Get-IconDigest([string]$Filename) {
 
 function Resolve-InstallerPath([string]$Filename) {
   $buffer = [Text.StringBuilder]::new(32768)
-  $length = [InstallerNative]::GetLongPathName([IO.Path]::GetFullPath($Filename), $buffer, $buffer.Capacity)
+  try {
+    $fullPath = [IO.Path]::GetFullPath($Filename)
+  } catch {
+    throw "Invalid installed path: $($Filename | ConvertTo-Json -Compress); $($_.Exception.Message)"
+  }
+  $length = [InstallerNative]::GetLongPathName($fullPath, $buffer, $buffer.Capacity)
   if ($length -eq 0 -or $length -ge $buffer.Capacity) { throw "Cannot resolve installed path: $Filename" }
   return $buffer.ToString()
 }
@@ -252,6 +257,7 @@ try {
   )) {
     if (!(Test-Path $shortcut)) { throw "Shortcut missing: $shortcut" }
     $shortcutTarget = $shell.CreateShortcut($shortcut).TargetPath
+    Write-Host "Shortcut target: $($shortcutTarget | ConvertTo-Json -Compress); expected: $($executable | ConvertTo-Json -Compress)"
     if ((Resolve-InstallerPath $shortcutTarget) -ne (Resolve-InstallerPath $executable)) {
       throw "Wrong shortcut target: $shortcut; actual: $shortcutTarget; expected: $executable"
     }
