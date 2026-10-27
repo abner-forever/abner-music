@@ -9,6 +9,14 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 
+[StructLayout(LayoutKind.Sequential)]
+public struct InstallerRectangle {
+  public int Left;
+  public int Top;
+  public int Right;
+  public int Bottom;
+}
+
 [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
 class InstallerShellLink { }
 
@@ -35,6 +43,18 @@ public static class InstallerNative {
 
   [DllImport("user32.dll")]
   public static extern uint GetDpiForWindow(IntPtr window);
+
+  [DllImport("user32.dll")]
+  public static extern bool SetCursorPos(int horizontal, int vertical);
+
+  [DllImport("user32.dll")]
+  public static extern void mouse_event(uint flags, uint horizontal, uint vertical, uint data, UIntPtr extraInfo);
+
+  [DllImport("user32.dll")]
+  public static extern bool RedrawWindow(IntPtr window, IntPtr rectangle, IntPtr region, uint flags);
+
+  [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+  public static extern IntPtr ReadRectangle(IntPtr window, uint message, IntPtr parameter, ref InstallerRectangle rectangle);
 
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
   public static extern uint GetLongPathName(string shortPath, System.Text.StringBuilder longPath, uint length);
@@ -95,14 +115,20 @@ function Get-DialogText {
   return ($controls | ForEach-Object { $_.Current.Name }) -join "`n"
 }
 
-function Invoke-Next {
+function Invoke-InstallerButton([int]$Identifier) {
   $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
-  $button = [InstallerNative]::GetDlgItem($dialog, 1)
+  $button = [InstallerNative]::GetDlgItem($dialog, $Identifier)
   if ($button -eq [IntPtr]::Zero -or ![InstallerNative]::IsWindowEnabled($button)) {
     throw "Wizard button unavailable: $(Get-DialogText)"
   }
   [void][InstallerNative]::SetForegroundWindow($dialog)
-  [void][InstallerNative]::SendMessage($button, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)
+  $bounds = [Windows.Automation.AutomationElement]::FromHandle($button).Current.BoundingRectangle
+  [void][InstallerNative]::SetCursorPos([int]($bounds.X + $bounds.Width / 2), [int]($bounds.Y + $bounds.Height / 2))
+  [InstallerNative]::mouse_event(6, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Invoke-Next {
+  Invoke-InstallerButton 1
 }
 
 function Get-Control([string]$Identifier) {
@@ -146,6 +172,66 @@ function Save-Dialog([string]$Name) {
   } finally {
     $graphics.Dispose()
     $bitmap.Dispose()
+  }
+}
+
+function Assert-InstallerRendering([bool]$PrimaryVisible) {
+  $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
+  $scale = [InstallerNative]::GetDpiForWindow($dialog) / 96.0
+  [void][InstallerNative]::RedrawWindow($dialog, [IntPtr]::Zero, [IntPtr]::Zero, 0x185)
+  $bounds = $script:window.Current.BoundingRectangle
+  $bitmap = [Drawing.Bitmap]::new([int]$bounds.Width, [int]$bounds.Height)
+  $graphics = [Drawing.Graphics]::FromImage($bitmap)
+  try {
+    $graphics.CopyFromScreen([int]$bounds.X, [int]$bounds.Y, 0, 0, $bitmap.Size)
+    $green = 0
+    $text = 0
+    $total = 0
+    for ($row = [int](444 * $scale); $row -lt [int](492 * $scale); $row++) {
+      for ($column = [int](334 * $scale); $column -lt [int](752 * $scale); $column++) {
+        $color = $bitmap.GetPixel($column, $row)
+        $total++
+        if ([Math]::Abs($color.R - 36) -lt 15 -and [Math]::Abs($color.G - 102) -lt 15 -and [Math]::Abs($color.B - 77) -lt 15) { $green++ }
+        if ($column -gt 440 * $scale -and $column -lt 645 * $scale -and $row -gt 458 * $scale -and $row -lt 477 * $scale -and $color.R -gt 220 -and $color.G -gt 225 -and $color.B -gt 210) { $text++ }
+      }
+    }
+    if ($PrimaryVisible) {
+      if ($green -lt $total * 0.85 -or $text -lt 20 * $scale * $scale) {
+        throw "Primary button is not painted: green=$green/$total, text=$text"
+      }
+      $corner = $bitmap.GetPixel([int](335 * $scale), [int](445 * $scale))
+      if ($corner.R -lt 220 -or $corner.G -lt 225 -or $corner.B -lt 210) { throw 'Primary button has no rounded corner' }
+    } else {
+      if ($green -gt $total * 0.01) { throw 'Primary button remains visible during installation' }
+      for ($offset = 12; $offset -lt 406; $offset++) {
+        $color = $bitmap.GetPixel([int]((334 + $offset) * $scale), [int](491 * $scale))
+        if ($color.R -lt 220 -or $color.G -lt 225 -or $color.B -lt 210) { throw 'Native button border remains visible during installation' }
+      }
+    }
+    for ($offset = 2; $offset -lt 30; $offset++) {
+      foreach ($point in @(@((748 + $offset), 21), @((748 + $offset), 50), @(749, (20 + $offset)), @(778, (20 + $offset)))) {
+        $color = $bitmap.GetPixel([int]($point[0] * $scale), [int]($point[1] * $scale))
+        if ($color.R -lt 220 -or $color.G -lt 225 -or $color.B -lt 210) { throw 'Close button has a native rectangular border' }
+      }
+    }
+  } finally {
+    $graphics.Dispose()
+    $bitmap.Dispose()
+  }
+}
+
+function Assert-DirectoryAlignment {
+  $directoryControl = Get-Control '4201'
+  $browseControl = Get-Control '4206'
+  if (!$directoryControl -or !$browseControl) { throw 'Directory controls missing' }
+  $directoryBounds = $directoryControl.Current.BoundingRectangle
+  $browseBounds = $browseControl.Current.BoundingRectangle
+  $formatting = [InstallerRectangle]::new()
+  [void][InstallerNative]::ReadRectangle([IntPtr]$directoryControl.Current.NativeWindowHandle, 0x00B2, [IntPtr]::Zero, [ref]$formatting)
+  $textCenter = $directoryBounds.Y + 1 + ($formatting.Top + $formatting.Bottom) / 2
+  $browseCenter = $browseBounds.Y + $browseBounds.Height / 2
+  if ([Math]::Abs($textCenter - $browseCenter) -gt 2) {
+    throw "Directory text and Change link are misaligned: $textCenter vs $browseCenter"
   }
 }
 
@@ -199,6 +285,10 @@ $installer = $null
 try {
   Assert-BrandedIcon $artifact
   Open-Installer
+  $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
+  [void][InstallerNative]::SendMessage([InstallerNative]::GetDlgItem($dialog, 1), 0x00F4, [IntPtr]1, [IntPtr]1)
+  Assert-InstallerRendering $true
+  Assert-DirectoryAlignment
   $cancelDirectory = Get-Control '4201'
   if (!$cancelDirectory) { throw 'Installation directory field missing before cancellation' }
   [void][InstallerNative]::SendText([IntPtr]$cancelDirectory.Current.NativeWindowHandle, 0x000C, [IntPtr]::Zero, $installation)
@@ -219,8 +309,7 @@ try {
   } 'installation options'
   if ((Get-Control '4205').Current.IsEnabled) { throw '/currentuser should lock the installation scope' }
   Save-Dialog 'options'
-  $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
-  [void][InstallerNative]::SendMessage([InstallerNative]::GetDlgItem($dialog, 2), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)
+  Invoke-InstallerButton 2
   if (!$installer.WaitForExit(20000)) { throw 'Installer did not exit after cancellation' }
   if (Test-Path $executable) { throw 'Cancelled installation wrote application files' }
 
@@ -234,6 +323,7 @@ try {
   [void][InstallerNative]::SendText($directoryHandle, 0x000C, [IntPtr]::Zero, 'relative-folder')
   Invoke-Next
   Wait-For { (Get-DialogText) -match 'Choose a valid app folder|\u8bf7\u9009\u62e9\u6709\u6548' } 'invalid directory rejection'
+  Assert-InstallerRendering $true
   Save-Dialog 'invalid-directory'
   $occupied = Join-Path $directory 'existing-files'
   New-Item $occupied -ItemType Directory | Out-Null
@@ -247,9 +337,13 @@ try {
   if (Test-Path $executable) { throw 'Application was installed before clicking Install' }
   Invoke-Next
   Wait-For { (Get-DialogText) -match 'Installing Abner Music|\u6b63\u5728\u5b89\u88c5 Abner Music|ABNER MUSIC / READY' } 'installation progress' 180
-  if ((Get-DialogText) -notmatch 'ABNER MUSIC / READY') { Save-Dialog 'progress' }
+  if ((Get-DialogText) -notmatch 'ABNER MUSIC / READY') {
+    Save-Dialog 'progress'
+    Assert-InstallerRendering $false
+  }
   Wait-For { (Get-DialogText) -match 'ABNER MUSIC / READY' } 'finish page' 180
   Save-Dialog 'finish'
+  Assert-InstallerRendering $true
   Invoke-Next
   if (!$installer.WaitForExit(20000)) { throw 'Installer did not exit after Finish' }
   if ($installer.ExitCode -ne 0) { throw "Installer exit code: $($installer.ExitCode)" }
@@ -286,7 +380,7 @@ try {
   }
   & node (Join-Path $PSScriptRoot 'smoke.mjs') "--arch=$Architecture" "--executable=$executable"
   if ($LASTEXITCODE -ne 0) { throw 'Installed application smoke test failed' }
-  Write-Host 'Windows installer passed: custom borderless UI, cancellation, options, directory validation, Unicode paths, progress/finish, no automatic launch, icons, shortcuts and installed application smoke.'
+  Write-Host 'Windows installer passed: painted rounded buttons, borderless close control, aligned directory controls, real mouse clicks, custom borderless UI, cancellation, options, directory validation, Unicode paths, progress/finish, no automatic launch, icons, shortcuts and installed application smoke.'
 } catch {
   if ($script:window) {
     try { Save-Dialog 'failure' } catch { Write-Warning 'Unable to capture the failed installer dialog' }

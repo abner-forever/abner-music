@@ -61,7 +61,7 @@ try {
     ]) {
       await bitmap(
         `installer-${state}-${language}`,
-        `<svg xmlns="http://www.w3.org/2000/svg" width="418" height="48"><rect width="418" height="48" fill="#24664d"/><text x="209" y="30" text-anchor="middle" fill="#f6f7ee" font-family="'Microsoft YaHei UI','PingFang SC','Segoe UI',sans-serif" font-size="15" font-weight="600">${text}</text></svg>`,
+        `<svg xmlns="http://www.w3.org/2000/svg" width="418" height="48"><rect width="418" height="48" fill="#f6f7ee"/><rect width="418" height="48" rx="8" fill="#24664d"/><text x="209" y="30" text-anchor="middle" fill="#f6f7ee" font-family="'Microsoft YaHei UI','PingFang SC','Segoe UI',sans-serif" font-size="15" font-weight="600">${text}</text></svg>`,
         836,
         96,
       );

@@ -10,10 +10,13 @@ Var AbnerBackground
 Var AbnerBackgroundImage
 Var AbnerButtonImage
 Var AbnerCloseImage
+Var AbnerNextArtwork
+Var AbnerCancelArtwork
 Var AbnerHeadingFont
 Var AbnerBodyFont
 Var AbnerSmallFont
 Var AbnerDirectory
+Var AbnerBrowseButton
 Var AbnerSelectedDirectory
 Var AbnerError
 Var AbnerOptions
@@ -61,6 +64,29 @@ Var AbnerProgressDescription
   ${If} $AbnerLanguage == "zh"
     StrCpy ${OUTPUT} "${CHINESE}"
   ${EndIf}
+!macroend
+
+!macro AbnerArtwork CONTROL ARTWORK IMAGE FILE WIDTH HEIGHT
+  Push $0
+  Push $1
+  Push $2
+  IntOp $0 ${WIDTH} * $AbnerDpi
+  IntOp $0 $0 / 96
+  IntOp $1 ${HEIGHT} * $AbnerDpi
+  IntOp $1 $1 / 96
+  System::Call 'user32::LoadImage(p 0, t "${FILE}", i 0, i r0, i r1, i 0x10) p.r2'
+  ${If} $2 P<> 0
+    !insertmacro AbnerMove ${ARTWORK} 0 0 ${WIDTH} ${HEIGHT}
+    SendMessage ${ARTWORK} ${STM_SETIMAGE} ${IMAGE_BITMAP} $2
+    ${NSD_FreeImage} ${IMAGE}
+    StrCpy ${IMAGE} $2
+    ShowWindow ${ARTWORK} ${SW_SHOW}
+  ${Else}
+    ShowWindow ${ARTWORK} ${SW_HIDE}
+  ${EndIf}
+  Pop $2
+  Pop $1
+  Pop $0
 !macroend
 
 !macro AbnerPageStart
@@ -124,16 +150,18 @@ Function AbnerGuiInit
   System::Call 'uxtheme::SetWindowTheme(p $AbnerNext, w "", w "")'
   System::Call 'uxtheme::SetWindowTheme(p $AbnerCancel, w "", w "")'
   System::Call 'user32::GetWindowLong(p $AbnerNext, i -16) i.r0'
-  IntOp $0 $0 | 0x8080
+  IntOp $0 $0 | ${WS_CLIPCHILDREN}
   System::Call 'user32::SetWindowLong(p $AbnerNext, i -16, i r0)'
   System::Call 'user32::GetWindowLong(p $AbnerCancel, i -16) i.r0'
-  IntOp $0 $0 | 0x8080
+  IntOp $0 $0 | ${WS_CLIPCHILDREN}
   System::Call 'user32::SetWindowLong(p $AbnerCancel, i -16, i r0)'
-  IntOp $0 32 * $AbnerDpi
-  IntOp $0 $0 / 96
-  System::Call 'user32::LoadImage(p 0, t "$PLUGINSDIR\abner-close.bmp", i 0, i r0, i r0, i 0x10) p.s'
-  Pop $AbnerCloseImage
-  SendMessage $AbnerCancel ${BM_SETIMAGE} 0 $AbnerCloseImage
+  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "", i 0x5000000E, i 0, i 0, i 0, i 0, p $AbnerNext, p 4210, p 0, p 0) p.s'
+  Pop $AbnerNextArtwork
+  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "", i 0x5000000E, i 0, i 0, i 0, i 0, p $AbnerCancel, p 4211, p 0, p 0) p.s'
+  Pop $AbnerCancelArtwork
+  !insertmacro AbnerArtwork $AbnerCancel $AbnerCancelArtwork $AbnerCloseImage "$PLUGINSDIR\abner-close.bmp" 32 32
+  !insertmacro AbnerText $1 "关闭" "Close"
+  SendMessage $AbnerCancel ${WM_SETTEXT} 0 "STR:$1"
   !insertmacro AbnerMove $AbnerCancel 748 20 32 32
   ShowWindow $AbnerCancel ${SW_SHOW}
   IntOp $0 800 * $AbnerDpi
@@ -157,21 +185,57 @@ Function AbnerSetPrimary
   Exch $4
   Push $0
   Push $1
-  ${NSD_FreeImage} $AbnerButtonImage
+  Push $2
+  !insertmacro AbnerMove $AbnerNext 334 444 418 48
+  !insertmacro AbnerArtwork $AbnerNext $AbnerNextArtwork $AbnerButtonImage "$PLUGINSDIR\abner-$4-$AbnerLanguage.bmp" 418 48
   IntOp $0 418 * $AbnerDpi
   IntOp $0 $0 / 96
   IntOp $1 48 * $AbnerDpi
   IntOp $1 $1 / 96
-  System::Call 'user32::LoadImage(p 0, t "$PLUGINSDIR\abner-$4-$AbnerLanguage.bmp", i 0, i r0, i r1, i 0x10) p.s'
-  Pop $AbnerButtonImage
-  SendMessage $AbnerNext ${BM_SETIMAGE} 0 $AbnerButtonImage
-  System::Call 'gdi32::CreateRoundRectRgn(i 0, i 0, i r0, i r1, i 12, i 12) p.r0'
+  IntOp $2 16 * $AbnerDpi
+  IntOp $2 $2 / 96
+  System::Call 'gdi32::CreateRoundRectRgn(i 0, i 0, i r0, i r1, i r2, i r2) p.r0'
   System::Call 'user32::SetWindowRgn(p $AbnerNext, p r0, i 1)'
   !insertmacro AbnerMove $AbnerNext 334 444 418 48
   ShowWindow $AbnerNext ${SW_SHOW}
+  Pop $2
   Pop $1
   Pop $0
   Pop $4
+FunctionEnd
+
+Function AbnerAlignDirectory
+  System::Call 'user32::GetDC(p $AbnerDirectory) p.r0'
+  System::Call 'gdi32::SelectObject(p r0, p $AbnerSmallFont) p.r1'
+  System::Alloc 8
+  Pop $2
+  System::Call 'gdi32::GetTextExtentPoint32W(p r0, w "Ag", i 2, p r2)'
+  System::Call '*$2(i, i .r3)'
+  System::Free $2
+  System::Call 'gdi32::SelectObject(p r0, p r1)'
+  System::Call 'user32::ReleaseDC(p $AbnerDirectory, p r0)'
+  System::Alloc 16
+  Pop $2
+  System::Call 'user32::GetClientRect(p $AbnerDirectory, p r2)'
+  System::Call '*$2(i, i, i .r0, i .r1)'
+  IntOp $1 $1 - $3
+  IntOp $1 $1 / 2
+  IntOp $4 10 * $AbnerDpi
+  IntOp $4 $4 / 96
+  IntOp $0 $0 - $4
+  IntOp $5 $1 + $3
+  System::Call '*$2(i r4, i r1, i r0, i r5)'
+  SendMessage $AbnerDirectory ${EM_SETRECT} 0 $2
+  System::Free $2
+  IntOp $0 364 * $AbnerDpi
+  IntOp $0 $0 / 96
+  IntOp $2 190 * $AbnerDpi
+  IntOp $2 $2 / 96
+  IntOp $1 $1 + $2
+  IntOp $1 $1 + 1
+  IntOp $2 54 * $AbnerDpi
+  IntOp $2 $2 / 96
+  System::Call 'user32::MoveWindow(p $AbnerBrowseButton, i r0, i r1, i r2, i r3, i 1)'
 FunctionEnd
 
 Function AbnerReadOuterDirectory
@@ -194,7 +258,7 @@ Function AbnerWelcome
   !insertmacro AbnerLabel "$1" 92 56 $AbnerBodyFont 71816C
   !insertmacro AbnerText $1 "安装位置" "INSTALL LOCATION"
   !insertmacro AbnerLabel "$1" 164 20 $AbnerSmallFont 71816C
-  ${NSD_CreateDirRequest} 0 0 100% 28 "$INSTDIR"
+  nsDialogs::CreateControl EDIT ${DEFAULT_STYLES}|${WS_TABSTOP}|${WS_BORDER}|${ES_AUTOHSCROLL}|${ES_MULTILINE} 0 0 0 100% 30 "$INSTDIR"
   Pop $AbnerDirectory
   System::Call 'user32::SetWindowLong(p $AbnerDirectory, i -12, i 4201)'
   !insertmacro AbnerMove $AbnerDirectory 0 190 356 30
@@ -202,13 +266,16 @@ Function AbnerWelcome
   SetCtlColors $AbnerDirectory 203D2E FFFFFA
   !insertmacro AbnerText $1 "更改" "Change"
   ${NSD_CreateLink} 0 0 54 30 "$1"
-  Pop $0
-  !insertmacro AbnerMove $0 364 190 54 30
-  SetCtlColors $0 24664D F6F7EE
-  ${NSD_OnClick} $0 AbnerBrowse
+  Pop $AbnerBrowseButton
+  System::Call 'user32::SetWindowLong(p $AbnerBrowseButton, i -12, i 4206)'
+  SendMessage $AbnerBrowseButton ${WM_SETFONT} $AbnerSmallFont 0
+  SetCtlColors $AbnerBrowseButton 24664D F6F7EE
+  ${NSD_OnClick} $AbnerBrowseButton AbnerBrowse
+  Call AbnerAlignDirectory
   !insertmacro AbnerText $1 "安装选项 +" "Installation options +"
   ${NSD_CreateLink} 0 0 100% 24 "$1"
   Pop $AbnerOptions
+  SendMessage $AbnerOptions ${WM_SETFONT} $AbnerSmallFont 0
   !insertmacro AbnerMove $AbnerOptions 0 232 418 24
   SetCtlColors $AbnerOptions 24664D F6F7EE
   System::Call 'user32::SetWindowLong(p $AbnerOptions, i -12, i 4202)'
@@ -282,6 +349,7 @@ Function AbnerToggleOptions
     !insertmacro AbnerText $1 "安装选项 +" "Installation options +"
   ${EndIf}
   ${NSD_SetText} $AbnerOptions "$1"
+  System::Call 'user32::RedrawWindow(p $AbnerPage, p 0, p 0, i 0x185)'
 FunctionEnd
 
 Function AbnerScopeChanged
@@ -403,6 +471,8 @@ Function AbnerProgressShow
   SetCtlColors $mui.InstFilesPage.Text 71816C F6F7EE
   ShowWindow $mui.InstFilesPage.Text ${SW_SHOW}
   ShowWindow $AbnerNext ${SW_HIDE}
+  System::Call 'gdi32::CreateRectRgn(i 0, i 0, i 0, i 0) p.r0'
+  System::Call 'user32::SetWindowRgn(p $AbnerNext, p r0, i 1)'
   GetDlgItem $0 $HWNDPARENT 3
   ShowWindow $0 ${SW_HIDE}
   EnableWindow $AbnerCancel 0
@@ -421,8 +491,8 @@ Function AbnerProgressLeave
     SendMessage $AbnerCancel ${WM_SETTEXT} 0 "STR:$1"
     Push close
     Call AbnerSetPrimary
-    SendMessage $AbnerCancel ${BM_SETIMAGE} 0 $AbnerButtonImage
     !insertmacro AbnerMove $AbnerCancel 334 444 418 48
+    !insertmacro AbnerArtwork $AbnerCancel $AbnerCancelArtwork $AbnerCloseImage "$PLUGINSDIR\abner-close-$AbnerLanguage.bmp" 418 48
     ShowWindow $AbnerNext ${SW_HIDE}
     !insertmacro AbnerMove $mui.InstFilesPage.Log 0 276 418 64
     ShowWindow $mui.InstFilesPage.Log ${SW_SHOW}
