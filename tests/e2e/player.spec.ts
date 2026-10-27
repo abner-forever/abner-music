@@ -94,6 +94,33 @@ test('browser local import persists audio and supports synchronized lyrics', asy
   await expect(page.locator('.lyric-active')).toHaveCount(1);
 });
 
+test('sidebar navigation leaves lyrics and shows the selected page', async ({ page }) => {
+  await page.goto('/');
+  const trackTitle = await page.locator('.player-song-copy strong').textContent();
+  const destinations = [
+    { button: /发现音乐/, heading: '发现音乐' },
+    { button: /全部音乐/, heading: '我的音乐' },
+    { button: /我喜欢的/, heading: '我喜欢的音乐' },
+    { button: /最近播放/, heading: '最近播放' },
+    { button: /网络音乐/, heading: '网络音乐' },
+    { button: /我的歌单/, heading: '我的歌单' },
+    { button: /给自己的留白/, heading: '给自己的留白' },
+    { button: /晚风与耳机/, heading: '晚风与耳机' },
+  ];
+  for (const destination of destinations) {
+    await page.getByRole('button', { name: '歌词', exact: true }).click();
+    await expect(page.locator('.lyrics-view')).toBeVisible();
+    await page.locator('.sidebar').getByRole('button', { name: destination.button }).click();
+    await expect(page.locator('.lyrics-view')).toHaveCount(0);
+    await expect(page.locator('.main-content h1')).toContainText(destination.heading);
+    await expect(page.locator('.player-song-copy strong')).toHaveText(trackTitle!);
+  }
+  await page.getByRole('button', { name: '后退', exact: true }).click();
+  await expect(page.locator('.main-content h1')).toHaveText('给自己的留白');
+  await page.getByRole('button', { name: '前进', exact: true }).click();
+  await expect(page.locator('.main-content h1')).toHaveText('晚风与耳机');
+});
+
 test('queue, equalizer, sleep timer and responsive layout work', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '播放队列', exact: true }).click();

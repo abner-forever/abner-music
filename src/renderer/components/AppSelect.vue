@@ -172,7 +172,7 @@ onUnmounted(() => {
   min-width: 96px;
   min-height: 33px;
   padding: 7px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: 6px;
   background: var(--surface);
   color: var(--text);
@@ -200,7 +200,7 @@ onUnmounted(() => {
   z-index: 200;
   overflow-y: auto;
   padding: 5px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: 9px;
   background: var(--surface);
   color: var(--text);

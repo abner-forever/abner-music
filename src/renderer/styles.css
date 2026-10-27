@@ -2,8 +2,8 @@
   color-scheme: light;
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: #303a34;
-  background: #f7f8f4;
+  color: var(--text);
+  background: var(--page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -17,6 +17,13 @@
   --green-soft: #e4eadc;
   --line: #e9ece4;
   --hover: #eef1e8;
+  --control-border: #e9ece4;
+  --focus: #82a582;
+  --scrollbar-thumb: #cdd4c7;
+  --scrollbar-thumb-hover: #a6b39d;
+  --switch-off: #d9dfd1;
+  --switch-on: #78976a;
+  --switch-thumb: #fff;
   --player-height: 100px;
   --sidebar-width: 218px;
 }
@@ -58,7 +65,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid #82a582;
+  outline: 2px solid var(--focus);
   outline-offset: 4px;
 }
 button,
@@ -90,10 +97,16 @@ svg {
   height: 5px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cdd4c7;
+  background: var(--scrollbar-thumb);
   border-radius: 6px;
 }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
 ::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 .app-shell {
@@ -142,7 +155,7 @@ svg {
   min-height: 37px;
   font-size: 12px;
   font-weight: 500;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   background: var(--surface);
   border-radius: 7px;
   line-height: 1.3;
@@ -1498,6 +1511,7 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 .playlist-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
   gap: 26px;
 }
 .playlist-card {
@@ -1530,6 +1544,8 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+.playlist-create-card:only-child {
   aspect-ratio: 1;
 }
 .playlist-create-card > span {
@@ -1835,7 +1851,7 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 .lyrics-textarea {
   display: block;
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   background: var(--page);
   padding: 12px;
   border-radius: 7px;
@@ -1845,8 +1861,9 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 }
 .form-label > input:focus,
 .lyrics-textarea:focus {
-  border-color: #92ac80;
-  box-shadow: 0 0 0 3px #9db38915;
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px var(--focus);
 }
 .form-two-col {
   display: grid;
@@ -1927,6 +1944,15 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 }
 .settings-modal {
   width: 580px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px 0;
+}
+.settings-content {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 36px;
 }
 .release-meta {
   display: flex;
@@ -2022,7 +2048,7 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 .switch {
   width: 34px;
   height: 19px;
-  background: #d9dfd1;
+  background: var(--switch-off);
   border-radius: 20px;
   position: relative;
   flex-shrink: 0;
@@ -2031,7 +2057,7 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   width: 13px;
   height: 13px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--switch-thumb);
   position: absolute;
   top: 3px;
   left: 3px;
@@ -2039,7 +2065,7 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   transition: transform 0.2s;
 }
 .switch.on {
-  background: #78976a;
+  background: var(--switch-on);
 }
 .switch.on > span {
   transform: translateX(15px);
@@ -2395,6 +2421,13 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   --green-soft: #354731;
   --line: #354030;
   --hover: #2e392c;
+  --control-border: #66775e;
+  --focus: #9abf84;
+  --scrollbar-thumb: #607158;
+  --scrollbar-thumb-hover: #839477;
+  --switch-off: #53614d;
+  --switch-on: #8bae74;
+  --switch-thumb: #edf4e7;
 }
 [data-theme='dark'] .sidebar {
   border-color: var(--line);
@@ -2424,6 +2457,9 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 [data-theme='dark'] .import-button {
   color: #afc997;
   border-color: #3f5035;
+}
+[data-theme='dark'] .playlist-create-card {
+  border-color: var(--control-border);
 }
 [data-theme='dark'] .button-dark {
   background: #6e9256;
@@ -2980,6 +3016,12 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   }
   .modal {
     padding: 30px 23px;
+  }
+  .settings-modal {
+    padding: 16px 0;
+  }
+  .settings-content {
+    padding: 14px 23px;
   }
   .modal h2 {
     font-size: 19px;

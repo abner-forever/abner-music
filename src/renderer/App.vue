@@ -233,6 +233,7 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败，请重试';
 }
 function navigate(target: string, fromHistory = false) {
+  lyricsOpen.value = false;
   search.value = '';
   filter.value = 'all';
   sort.value = 'default';
@@ -1356,8 +1357,8 @@ onUnmounted(() => {
             </div>
           </form></template
         >
-        <template v-else-if="modal === 'settings'"
-          ><div class="eyebrow">MAKE YOURSELF AT HOME</div>
+        <div v-else-if="modal === 'settings'" class="settings-content">
+          <div class="eyebrow">MAKE YOURSELF AT HOME</div>
           <h2>偏好设置</h2>
           <p class="modal-subtitle">让音乐，以你喜欢的方式发生。</p>
           <div class="settings-section">
@@ -1487,8 +1488,8 @@ onUnmounted(() => {
             <AudioLines :size="17" />音乐，自在发生。<span
               >github.com/abner-forever/abner-music</span
             >
-          </div></template
-        >
+          </div>
+        </div>
         <template v-else-if="modal === 'update' && update.release">
           <div class="modal-symbol"><ArrowDownToLine :size="25" /></div>
           <div class="eyebrow">SOMETHING NEW TO HEAR</div>
