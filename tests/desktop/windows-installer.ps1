@@ -124,7 +124,8 @@ function Invoke-InstallerButton([int]$Identifier) {
   [void][InstallerNative]::SetForegroundWindow($dialog)
   $bounds = [Windows.Automation.AutomationElement]::FromHandle($button).Current.BoundingRectangle
   [void][InstallerNative]::SetCursorPos([int]($bounds.X + $bounds.Width / 2), [int]($bounds.Y + $bounds.Height / 2))
-  [InstallerNative]::mouse_event(6, 0, 0, 0, [UIntPtr]::Zero)
+  [InstallerNative]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+  [InstallerNative]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
 }
 
 function Invoke-Next {
@@ -148,6 +149,13 @@ function Open-Installer {
   $script:window = [Windows.Automation.AutomationElement]::FromHandle($script:installer.MainWindowHandle)
   Wait-For { (Get-DialogText) -match 'ABNER MUSIC / SETUP' } 'custom installation page'
   $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
+  Wait-For {
+    $primary = [InstallerNative]::GetDlgItem($dialog, 1)
+    $artwork = [InstallerNative]::GetDlgItem($primary, 4210)
+    return $artwork -ne [IntPtr]::Zero -and
+      [InstallerNative]::IsWindowVisible($artwork) -and
+      [InstallerNative]::SendMessage($artwork, 0x0173, [IntPtr]::Zero, [IntPtr]::Zero) -ne [IntPtr]::Zero
+  } 'painted installation button'
   if (([InstallerNative]::GetWindowLong($dialog, -16) -band 0x00C00000) -ne 0) {
     throw 'Installer still uses the default window title bar'
   }

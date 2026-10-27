@@ -258,7 +258,7 @@ Function AbnerWelcome
   !insertmacro AbnerLabel "$1" 92 56 $AbnerBodyFont 71816C
   !insertmacro AbnerText $1 "安装位置" "INSTALL LOCATION"
   !insertmacro AbnerLabel "$1" 164 20 $AbnerSmallFont 71816C
-  nsDialogs::CreateControl EDIT ${DEFAULT_STYLES}|${WS_TABSTOP}|${WS_BORDER}|${ES_AUTOHSCROLL}|${ES_MULTILINE} 0 0 0 100% 30 "$INSTDIR"
+  nsDialogs::CreateControl EDIT ${DEFAULT_STYLES}|${WS_TABSTOP}|0x00800000|${ES_AUTOHSCROLL}|${ES_MULTILINE} 0 0 0 100% 30 "$INSTDIR"
   Pop $AbnerDirectory
   System::Call 'user32::SetWindowLong(p $AbnerDirectory, i -12, i 4201)'
   !insertmacro AbnerMove $AbnerDirectory 0 190 356 30
