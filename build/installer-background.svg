@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="520" viewBox="0 0 800 520">
+  <defs>
+    <linearGradient id="forest" x2=".8" y2="1">
+      <stop stop-color="#285f4a"/>
+      <stop offset="1" stop-color="#163f32"/>
+    </linearGradient>
+    <radialGradient id="vinyl">
+      <stop stop-color="#294e3e"/>
+      <stop offset="1" stop-color="#122f27"/>
+    </radialGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#dbe8c1" stop-opacity=".16"/>
+      <stop offset=".5" stop-color="#dbe8c1" stop-opacity="0"/>
+      <stop offset="1" stop-color="#dbe8c1" stop-opacity=".08"/>
+    </linearGradient>
+    <clipPath id="panel"><path d="M0 0h292v520H0z"/></clipPath>
+  </defs>
+  <path fill="#f6f7ee" d="M0 0h800v520H0z"/>
+  <g clip-path="url(#panel)">
+    <path fill="url(#forest)" d="M0 0h292v520H0z"/>
+    <g fill="none" stroke="#b7cf9d" opacity=".09">
+      <circle cx="146" cy="280" r="178"/>
+      <circle cx="146" cy="280" r="198"/>
+      <circle cx="146" cy="280" r="218"/>
+    </g>
+    <circle cx="149" cy="292" r="117" fill="#102b24" opacity=".24"/>
+    <circle cx="146" cy="278" r="112" fill="url(#vinyl)"/>
+    <g fill="none" stroke="#779b7c" stroke-opacity=".13">
+      <circle cx="146" cy="278" r="104"/>
+      <circle cx="146" cy="278" r="97"/>
+      <circle cx="146" cy="278" r="90"/>
+      <circle cx="146" cy="278" r="83"/>
+      <circle cx="146" cy="278" r="76"/>
+      <circle cx="146" cy="278" r="69"/>
+    </g>
+    <circle cx="146" cy="278" r="112" fill="url(#shine)"/>
+    <circle cx="146" cy="278" r="45" fill="#c5d9a6"/>
+    <circle cx="146" cy="278" r="38" fill="none" stroke="#476848" stroke-opacity=".24"/>
+    <path d="M128 287v-14m12 20v-30m12 27v-23m12 16v-10" fill="none" stroke="#24664d" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="146" cy="278" r="4" fill="#183e30"/>
+    <rect x="36" y="34" width="42" height="42" rx="13" fill="#effbc9" fill-opacity=".1"/>
+    <path d="M46 61V49m7 17V44m8 19V47m7 10v-7" fill="none" stroke="#effbc9" stroke-width="3.2" stroke-linecap="round"/>
+    <g font-family="-apple-system, 'Segoe UI', sans-serif">
+      <text x="90" y="61" fill="#f2f7e9" font-size="18" font-weight="600" letter-spacing="-.5">Abner Music</text>
+      <text x="36" y="125" fill="#d7e6c3" font-size="11" letter-spacing="2.2">MAKE ROOM FOR MUSIC.</text>
+      <text x="36" y="438" fill="#f1f5e8" font-size="25" font-weight="500" letter-spacing="-.5">A little space.</text>
+      <text x="36" y="469" fill="#f1f5e8" font-size="25" font-weight="500" letter-spacing="-.5">A lot of music.</text>
+      <text x="36" y="497" fill="#a9c0a8" font-size="10" letter-spacing=".4">LOCAL MUSIC · YOUR OWN RHYTHM</text>
+    </g>
+  </g>
+</svg>

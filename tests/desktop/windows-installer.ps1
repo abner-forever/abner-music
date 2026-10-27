@@ -17,6 +17,15 @@ public static class InstallerNative {
   [DllImport("user32.dll")]
   public static extern bool IsWindowEnabled(IntPtr window);
 
+  [DllImport("user32.dll")]
+  public static extern bool IsWindowVisible(IntPtr window);
+
+  [DllImport("user32.dll")]
+  public static extern int GetWindowLong(IntPtr window, int index);
+
+  [DllImport("user32.dll")]
+  public static extern uint GetDpiForWindow(IntPtr window);
+
   [DllImport("user32.dll", CharSet = CharSet.Unicode)]
   public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr parameter, IntPtr value);
 
@@ -30,7 +39,7 @@ $project = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $artifact = Join-Path $project "out/make/Abner-Music-$($package.version)-windows-$Architecture.exe"
 $evidence = Join-Path $project 'test-results/windows-installer'
 $directory = Join-Path ([IO.Path]::GetTempPath()) "abner-install-$([guid]::NewGuid())"
-$installation = Join-Path $directory 'abner-music'
+$installation = Join-Path $directory ('Music Space ' + [char]0x97F3 + [char]0x4E50 + '/abner-music')
 $executable = Join-Path $installation 'abner-music.exe'
 $uninstaller = Join-Path $installation 'Uninstall abner-music.exe'
 $registryPaths = @(
@@ -69,6 +78,36 @@ function Invoke-Next {
   }
   [void][InstallerNative]::SetForegroundWindow($dialog)
   [void][InstallerNative]::SendMessage($button, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)
+}
+
+function Get-Control([string]$Identifier) {
+  return $script:window.FindFirst(
+    [Windows.Automation.TreeScope]::Descendants,
+    [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, $Identifier)
+  )
+}
+
+function Open-Installer {
+  $script:installer = Start-Process $artifact -ArgumentList '/currentuser' -PassThru
+  Wait-For {
+    $script:installer.Refresh()
+    if ($script:installer.HasExited) { throw "Installer exited before showing the window: $($script:installer.ExitCode)" }
+    return $script:installer.MainWindowHandle -ne [IntPtr]::Zero
+  } 'installer window'
+  $script:window = [Windows.Automation.AutomationElement]::FromHandle($script:installer.MainWindowHandle)
+  Wait-For { (Get-DialogText) -match 'ABNER MUSIC / SETUP' } 'custom installation page'
+  $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
+  if (([InstallerNative]::GetWindowLong($dialog, -16) -band 0x00C00000) -ne 0) {
+    throw 'Installer still uses the default window title bar'
+  }
+  if ([InstallerNative]::IsWindowVisible([InstallerNative]::GetDlgItem($dialog, 3))) {
+    throw 'Default Back button is visible'
+  }
+  $scale = [InstallerNative]::GetDpiForWindow($dialog) / 96.0
+  $bounds = $script:window.Current.BoundingRectangle
+  if ([Math]::Abs($bounds.Width / $scale - 800) -gt 2 -or [Math]::Abs($bounds.Height / $scale - 520) -gt 2) {
+    throw "Unexpected custom window dimensions: $($bounds.Width) x $($bounds.Height), scale $scale"
+  }
 }
 
 function Save-Dialog([string]$Name) {
@@ -122,37 +161,53 @@ function Get-IconDigest([string]$Filename) {
 $installer = $null
 try {
   Assert-BrandedIcon $artifact
-  $installer = Start-Process $artifact -ArgumentList @('/currentuser', "/D=$installation") -PassThru
-  Wait-For {
-    $installer.Refresh()
-    if ($installer.HasExited) { throw "Installer exited before showing the wizard: $($installer.ExitCode)" }
-    return $installer.MainWindowHandle -ne [IntPtr]::Zero
-  } 'installer window'
-  $script:window = [Windows.Automation.AutomationElement]::FromHandle($installer.MainWindowHandle)
-  Wait-For { (Get-DialogText) -match '\u6b22\u8fce\u5b89\u88c5 Abner Music' } 'welcome page'
+  Open-Installer
+  $cancelDirectory = Get-Control '4201'
+  if (!$cancelDirectory) { throw 'Installation directory field missing before cancellation' }
+  [void][InstallerNative]::SendText([IntPtr]$cancelDirectory.Current.NativeWindowHandle, 0x000C, [IntPtr]::Zero, $installation)
   if (Test-Path $executable) { throw 'Application was installed before confirmation' }
   Save-Dialog 'welcome'
+  $options = Get-Control '4202'
+  if (!$options) { throw 'Installation options toggle missing' }
+  $currentUser = Get-Control '4204'
+  if ($currentUser -and !$currentUser.Current.IsOffscreen) { throw 'Installation options should initially be collapsed' }
+  $options.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+  Wait-For {
+    $scopeControl = Get-Control '4204'
+    return $scopeControl -and !$scopeControl.Current.IsOffscreen
+  } 'installation options'
+  if ((Get-Control '4205').Current.IsEnabled) { throw '/currentuser should lock the installation scope' }
+  Save-Dialog 'options'
+  $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
+  [void][InstallerNative]::SendMessage([InstallerNative]::GetDlgItem($dialog, 2), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)
+  if (!$installer.WaitForExit(20000)) { throw 'Installer did not exit after cancellation' }
+  if (Test-Path $executable) { throw 'Cancelled installation wrote application files' }
 
-  $directoryEdit = $null
-  for ($page = 0; $page -lt 4; $page++) {
-    Invoke-Next
-    Start-Sleep -Milliseconds 400
-    $directoryEdit = $script:window.FindFirst(
-      [Windows.Automation.TreeScope]::Descendants,
-      [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, '1019')
-    )
-    if ($directoryEdit -and $directoryEdit.Current.IsEnabled -and !$directoryEdit.Current.IsOffscreen) { break }
-  }
+  Open-Installer
+  $directoryEdit = Get-Control '4201'
   if (!$directoryEdit -or !$directoryEdit.Current.IsEnabled -or $directoryEdit.Current.IsOffscreen) {
-    throw "Installation directory page missing: $(Get-DialogText)"
+    throw "Installation directory field missing: $(Get-DialogText)"
   }
   $directoryHandle = [IntPtr]$directoryEdit.Current.NativeWindowHandle
   if ($directoryHandle -eq [IntPtr]::Zero) { throw 'Installation directory control has no native handle' }
+  [void][InstallerNative]::SendText($directoryHandle, 0x000C, [IntPtr]::Zero, 'relative-folder')
+  Invoke-Next
+  Wait-For { (Get-DialogText) -match 'Choose a valid app folder|\u8bf7\u9009\u62e9\u6709\u6548' } 'invalid directory rejection'
+  Save-Dialog 'invalid-directory'
+  $occupied = Join-Path $directory 'existing-files'
+  New-Item $occupied -ItemType Directory | Out-Null
+  Set-Content (Join-Path $occupied 'keep.txt') 'Keep this file'
+  [void][InstallerNative]::SendText($directoryHandle, 0x000C, [IntPtr]::Zero, $occupied)
+  Invoke-Next
+  Wait-For { (Get-DialogText) -match 'Choose an empty folder|\u8bf7\u9009\u62e9\u7a7a\u6587\u4ef6\u5939' } 'occupied directory rejection'
+  if (!(Test-Path (Join-Path $occupied 'keep.txt'))) { throw 'Directory validation changed existing files' }
   [void][InstallerNative]::SendText($directoryHandle, 0x000C, [IntPtr]::Zero, $installation)
   Save-Dialog 'directory'
   if (Test-Path $executable) { throw 'Application was installed before clicking Install' }
   Invoke-Next
-  Wait-For { (Get-DialogText) -match 'Abner Music \u5b89\u88c5\u5b8c\u6210' } 'finish page' 180
+  Wait-For { (Get-DialogText) -match 'Installing Abner Music|\u6b63\u5728\u5b89\u88c5 Abner Music|ABNER MUSIC / READY' } 'installation progress' 180
+  if ((Get-DialogText) -notmatch 'ABNER MUSIC / READY') { Save-Dialog 'progress' }
+  Wait-For { (Get-DialogText) -match 'ABNER MUSIC / READY' } 'finish page' 180
   Save-Dialog 'finish'
   Invoke-Next
   if (!$installer.WaitForExit(20000)) { throw 'Installer did not exit after Finish' }
@@ -186,7 +241,7 @@ try {
   }
   & node (Join-Path $PSScriptRoot 'smoke.mjs') "--arch=$Architecture" "--executable=$executable"
   if ($LASTEXITCODE -ne 0) { throw 'Installed application smoke test failed' }
-  Write-Host 'Windows installer passed: interactive welcome/directory/finish, no automatic launch, EXE/uninstaller/Installed Apps icons, shortcuts and installed application smoke.'
+  Write-Host 'Windows installer passed: custom borderless UI, cancellation, options, directory validation, Unicode paths, progress/finish, no automatic launch, icons, shortcuts and installed application smoke.'
 } finally {
   if ($installer -and !$installer.HasExited) { Stop-Process -Id $installer.Id -Force }
   if (Test-Path $uninstaller) {

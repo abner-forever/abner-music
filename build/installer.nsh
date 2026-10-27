@@ -2,17 +2,34 @@
 !define MUI_TEXTCOLOR "203D2E"
 !define MUI_INSTFILESPAGE_COLORS "24664D F6F7EE"
 
-!macro customWelcomePage
-  !define MUI_WELCOMEPAGE_TITLE "欢迎安装 Abner Music"
-  !define MUI_WELCOMEPAGE_TEXT "音乐，自在发生。$\r$\n$\r$\n将本地音乐、网络音频和喜欢的声音，放进属于自己的音乐空间。$\r$\n$\r$\n接下来，你可以选择安装范围和安装位置。准备好后，点击“安装”开始。$\r$\n$\r$\n点击“下一步”继续。"
-  !insertmacro MUI_PAGE_WELCOME
-!macroend
+!ifndef BUILD_UNINSTALLER
+  ManifestDPIAware true
+  !define MUI_CUSTOMFUNCTION_GUIINIT AbnerGuiInit
+  !define MUI_CUSTOMFUNCTION_ABORT AbnerAbort
 
-!macro customFinishPage
-  !define MUI_FINISHPAGE_TITLE "Abner Music 安装完成"
-  !define MUI_FINISHPAGE_TEXT "你的音乐空间，准备好了。$\r$\n$\r$\nAbner Music 已安装到你的电脑。$\r$\n$\r$\n从桌面快捷方式或开始菜单打开应用，导入音乐，开始聆听。$\r$\n$\r$\n点击“完成”退出安装向导。"
-  !insertmacro MUI_PAGE_FINISH
-!macroend
+  !macro customWelcomePage
+    !include "installer-ui.nsh"
+    Page custom AbnerWelcome AbnerWelcomeLeave
+  !macroend
+
+  !macro customInstallMode
+    ${If} $installMode == all
+      StrCpy $isForceMachineInstall 1
+    ${Else}
+      StrCpy $isForceCurrentInstall 1
+    ${EndIf}
+  !macroend
+
+  !macro customPageAfterChangeDir
+    !define MUI_PAGE_CUSTOMFUNCTION_PRE AbnerProgressPre
+    !define MUI_PAGE_CUSTOMFUNCTION_SHOW AbnerProgressShow
+    !define MUI_PAGE_CUSTOMFUNCTION_LEAVE AbnerProgressLeave
+  !macroend
+
+  !macro customFinishPage
+    Page custom AbnerFinish
+  !macroend
+!endif
 
 !macro customUnWelcomePage
   !define MUI_WELCOMEPAGE_TITLE "卸载 Abner Music"

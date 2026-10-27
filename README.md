@@ -66,16 +66,16 @@ npm run make
 ```
 
 - macOS：`npm run make` 通过 Forge 的 `@electron-forge/maker-zip` 和 `@electron-forge/maker-dmg` 同时生成 ZIP 与 DMG，分别位于 `out/make/zip/` 和 `out/make/dmg/<架构>/`。DMG 安装窗口为 660 × 440，包含中文拖拽引导和 Retina 背景图；图标、背景及布局统一配置在 `forge.config.ts`。打包完成后先校验应用框架的相对符号链接，再生成安装包，避免安装后引用构建机器路径而无法启动。
-- Windows：在 `out/make/` 生成 `Abner-Music-<版本>-windows-x64.exe`，使用 NSIS 分步安装向导：欢迎 → 安装范围 → 安装位置 → 安装进度 → 完成。安装前可取消或修改位置，完成后从桌面或开始菜单主动打开应用。欢迎页、完成页和卸载页使用品牌侧栏，其他页面使用品牌页头；根据系统语言显示中文或英文按钮。
+- Windows：在 `out/make/` 生成 `Abner-Music-<版本>-windows-x64.exe`，安装器使用 NSIS 原生自定义界面：800 × 520 的无边框圆角窗口，左侧唱片插画，右侧安装首页、真实安装进度和完成状态。首页直接选择安装位置，展开“安装选项”可切换当前用户或所有用户；所有用户安装会请求管理员授权。安装前可关闭取消，完成后从桌面或开始菜单主动打开应用。支持中文、英文和按系统 DPI 缩放；卸载器保留原有品牌向导。
 - macOS 可用 `npm run make -- --arch=x64` 构建 Intel 版本，或 `--arch=arm64` 构建 Apple Silicon 版本。
 
 网络受限时可设置 `ELECTRON_ZIP_DIR` 指向已校验的官方 Electron ZIP 所在目录（文件名需保持官方格式），让 Forge 离线复用运行时。
 
 桌面图标保留四周各 4% 的透明留白，校准 Dock 和启动台中的图标大小。修改 `public/favicon.svg` 或 `build/dmg-background.svg` 后，在 macOS 执行 `npm run assets` 重新生成 PNG、ICO、ICNS 和安装背景，需要已安装 Playwright Chromium。重新打包后，已安装的旧版本需替换为新应用。
 
-Windows 使用包含 16–256 像素多个尺寸的 `build/icon.ico`，显式配置应用 EXE、安装 EXE、卸载程序以及“设置 → 应用 → 安装的应用”的图标。修改 `build/installer-sidebar.svg`、`build/installer-header.svg` 后同样运行 `npm run assets`，生成 NSIS 使用的 BMP。旧版 Squirrel 安装包需要先在系统设置中卸载旧版，再运行新版向导；原始音乐文件和应用数据会保留。
+Windows 使用包含 16–256 像素多个尺寸的 `build/icon.ico`，显式配置应用 EXE、安装 EXE、卸载程序以及“设置 → 应用 → 安装的应用”的图标。安装窗口在 `build/installer-ui.nsh` 中实现，通过 `build/installer.nsh` 扩展默认安装脚本，继续使用打包工具的文件解压、注册表、快捷方式、升级和卸载器生成逻辑。修改 `build/installer-background.svg` 或 `scripts/generate-installer-assets.mjs` 后执行 `npm run assets:installer`，生成双倍分辨率背景及中英文按钮 BMP；仅安装 Chrome 时可使用 `PLAYWRIGHT_CHANNEL=chrome npm run assets:installer`。修改卸载侧栏 `build/installer-sidebar.svg` 后执行 `npm run assets`。生成的 BMP 一并提交，发布无需临时生成素材。旧版 Squirrel 安装包需要先在系统设置中卸载旧版，再运行新版向导；原始音乐文件和应用数据会保留。
 
-在没有安装 Abner Music 的 Windows 测试账户上，打包后执行 `npm run test:installer`，自动操作真实安装向导，验证确认安装前不会写入应用、可选择目录、完成后不自动启动、EXE 和卸载图标、系统应用列表的注册表图标、桌面与开始菜单快捷方式，并运行安装后的应用回归。截图输出到 `test-results/windows-installer/`。测试结束卸载临时安装；发布工作流会在 Windows runner 执行此检查并保留截图。
+在没有安装 Abner Music 的 Windows 测试账户上，打包后执行 `npm run test:installer`，自动操作真实安装窗口，验证无默认标题栏和返回按钮、窗口尺寸、安装选项、取消安装、无效及非空目录拦截、中文和空格路径、完成后不自动启动、EXE 和卸载图标、系统应用列表的注册表图标、桌面与开始菜单快捷方式，并运行安装后的应用回归。截图输出到 `test-results/windows-installer/`。测试结束卸载临时安装；发布工作流会在 Windows runner 执行此检查并保留截图。所有用户安装和 UAC 取消分支需在 Windows 上人工补充验证。
 
 当前 Beta 不配置平台签名。macOS 如阻止打开，可在系统设置的「隐私与安全性」中确认来源后允许；Windows 可能显示 SmartScreen 提示。检查更新和 GitHub 下载不依赖签名证书。
 
