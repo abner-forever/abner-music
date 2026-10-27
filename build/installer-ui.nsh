@@ -312,9 +312,12 @@ Function AbnerWelcomeLeave
   ${If} $AbnerSelectedDirectory == ""
     Goto invalidDirectory
   ${EndIf}
-  ClearErrors
-  GetFullPathName $AbnerSelectedDirectory "$AbnerSelectedDirectory"
-  IfErrors invalidDirectory
+  System::Call 'kernel32::GetFullPathNameW(w "$AbnerSelectedDirectory", i ${NSIS_MAX_STRLEN}, w .r1, p 0) i.r0'
+  ${If} $0 == 0
+  ${OrIf} $0 >= ${NSIS_MAX_STRLEN}
+    Goto invalidDirectory
+  ${EndIf}
+  StrCpy $AbnerSelectedDirectory $1
   System::Call 'shlwapi::PathIsRoot(w "$AbnerSelectedDirectory") i.r0'
   ${If} $0 != 0
     Goto invalidDirectory
