@@ -53,6 +53,12 @@ public static class InstallerNative {
   [DllImport("user32.dll")]
   public static extern bool RedrawWindow(IntPtr window, IntPtr rectangle, IntPtr region, uint flags);
 
+  [DllImport("dwmapi.dll")]
+  public static extern int DwmFlush();
+
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetParent(IntPtr window);
+
   [DllImport("user32.dll", EntryPoint = "SendMessageW")]
   public static extern IntPtr ReadRectangle(IntPtr window, uint message, IntPtr parameter, ref InstallerRectangle rectangle);
 
@@ -152,8 +158,10 @@ function Open-Installer {
   Wait-For {
     $primary = [InstallerNative]::GetDlgItem($dialog, 1)
     $artwork = [InstallerNative]::GetDlgItem($primary, 4210)
+    $directoryControl = Get-Control '4201'
     return $artwork -ne [IntPtr]::Zero -and
       [InstallerNative]::IsWindowVisible($artwork) -and
+      $directoryControl -and !$directoryControl.Current.IsOffscreen -and
       [InstallerNative]::SendMessage($artwork, 0x0173, [IntPtr]::Zero, [IntPtr]::Zero) -ne [IntPtr]::Zero
   } 'painted installation button'
   if (([InstallerNative]::GetWindowLong($dialog, -16) -band 0x00C00000) -ne 0) {
@@ -170,6 +178,7 @@ function Open-Installer {
 }
 
 function Save-Dialog([string]$Name) {
+  [void][InstallerNative]::DwmFlush()
   $bounds = $script:window.Current.BoundingRectangle
   $bitmap = [Drawing.Bitmap]::new([int]$bounds.Width, [int]$bounds.Height)
   $graphics = [Drawing.Graphics]::FromImage($bitmap)
@@ -177,6 +186,21 @@ function Save-Dialog([string]$Name) {
     $graphics.CopyFromScreen([int]$bounds.X, [int]$bounds.Y, 0, 0, $bitmap.Size)
     $bitmap.Save((Join-Path $evidence "$Name.png"), [Drawing.Imaging.ImageFormat]::Png)
     Get-DialogText | Set-Content (Join-Path $evidence "$Name.txt") -Encoding UTF8
+    $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
+      ForEach-Object {
+        $current = $_.Current
+        $handle = [IntPtr]$current.NativeWindowHandle
+        [PSCustomObject]@{
+          Name = $current.Name
+          Identifier = $current.AutomationId
+          Class = $current.ClassName
+          Offscreen = $current.IsOffscreen
+          Bounds = $current.BoundingRectangle.ToString()
+          Handle = $handle.ToInt64()
+          Parent = [InstallerNative]::GetParent($handle).ToInt64()
+          Style = [InstallerNative]::GetWindowLong($handle, -16)
+        }
+      } | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $evidence "$Name-controls.json") -Encoding UTF8
   } finally {
     $graphics.Dispose()
     $bitmap.Dispose()
@@ -187,6 +211,7 @@ function Assert-InstallerRendering([bool]$PrimaryVisible, [bool]$Repaint = $true
   $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
   $scale = [InstallerNative]::GetDpiForWindow($dialog) / 96.0
   if ($Repaint) { [void][InstallerNative]::RedrawWindow($dialog, [IntPtr]::Zero, [IntPtr]::Zero, 0x185) }
+  [void][InstallerNative]::DwmFlush()
   $bounds = $script:window.Current.BoundingRectangle
   $bitmap = [Drawing.Bitmap]::new([int]$bounds.Width, [int]$bounds.Height)
   $graphics = [Drawing.Graphics]::FromImage($bitmap)
