@@ -183,15 +183,23 @@ function Save-Dialog([string]$Name) {
   }
 }
 
-function Assert-InstallerRendering([bool]$PrimaryVisible) {
+function Assert-InstallerRendering([bool]$PrimaryVisible, [bool]$Repaint = $true) {
   $dialog = [IntPtr]$script:window.Current.NativeWindowHandle
   $scale = [InstallerNative]::GetDpiForWindow($dialog) / 96.0
-  [void][InstallerNative]::RedrawWindow($dialog, [IntPtr]::Zero, [IntPtr]::Zero, 0x185)
+  if ($Repaint) { [void][InstallerNative]::RedrawWindow($dialog, [IntPtr]::Zero, [IntPtr]::Zero, 0x185) }
   $bounds = $script:window.Current.BoundingRectangle
   $bitmap = [Drawing.Bitmap]::new([int]$bounds.Width, [int]$bounds.Height)
   $graphics = [Drawing.Graphics]::FromImage($bitmap)
   try {
     $graphics.CopyFromScreen([int]$bounds.X, [int]$bounds.Y, 0, 0, $bitmap.Size)
+    $heading = 0
+    for ($row = [int](106 * $scale); $row -lt [int](158 * $scale); $row++) {
+      for ($column = [int](334 * $scale); $column -lt [int](752 * $scale); $column++) {
+        $color = $bitmap.GetPixel($column, $row)
+        if ($color.R -lt 150 -and $color.G -lt 160 -and $color.B -lt 150) { $heading++ }
+      }
+    }
+    if ($heading -lt 100 * $scale * $scale) { throw 'Installer heading disappeared after repainting or editing the directory' }
     $green = 0
     $text = 0
     $total = 0
@@ -302,6 +310,7 @@ try {
   [void][InstallerNative]::SendText([IntPtr]$cancelDirectory.Current.NativeWindowHandle, 0x000C, [IntPtr]::Zero, $installation)
   if (Test-Path $executable) { throw 'Application was installed before confirmation' }
   Save-Dialog 'welcome'
+  Assert-InstallerRendering $true $false
   $options = Get-Control '4202'
   if (!$options) { throw 'Installation options toggle missing' }
   $currentUser = Get-Control '4204'
@@ -317,6 +326,7 @@ try {
   } 'installation options'
   if ((Get-Control '4205').Current.IsEnabled) { throw '/currentuser should lock the installation scope' }
   Save-Dialog 'options'
+  Assert-InstallerRendering $true $false
   Invoke-InstallerButton 2
   if (!$installer.WaitForExit(20000)) { throw 'Installer did not exit after cancellation' }
   if (Test-Path $executable) { throw 'Cancelled installation wrote application files' }
@@ -333,6 +343,7 @@ try {
   Wait-For { (Get-DialogText) -match 'Choose a valid app folder|\u8bf7\u9009\u62e9\u6709\u6548' } 'invalid directory rejection'
   Assert-InstallerRendering $true
   Save-Dialog 'invalid-directory'
+  Assert-InstallerRendering $true $false
   $occupied = Join-Path $directory 'existing-files'
   New-Item $occupied -ItemType Directory | Out-Null
   Set-Content (Join-Path $occupied 'keep.txt') 'Keep this file'
@@ -342,16 +353,17 @@ try {
   if (!(Test-Path (Join-Path $occupied 'keep.txt'))) { throw 'Directory validation changed existing files' }
   [void][InstallerNative]::SendText($directoryHandle, 0x000C, [IntPtr]::Zero, $installation)
   Save-Dialog 'directory'
+  Assert-InstallerRendering $true $false
   if (Test-Path $executable) { throw 'Application was installed before clicking Install' }
   Invoke-Next
   Wait-For { (Get-DialogText) -match 'Installing Abner Music|\u6b63\u5728\u5b89\u88c5 Abner Music|ABNER MUSIC / READY' } 'installation progress' 180
   if ((Get-DialogText) -notmatch 'ABNER MUSIC / READY') {
     Save-Dialog 'progress'
-    Assert-InstallerRendering $false
+    Assert-InstallerRendering $false $false
   }
   Wait-For { (Get-DialogText) -match 'ABNER MUSIC / READY' } 'finish page' 180
   Save-Dialog 'finish'
-  Assert-InstallerRendering $true
+  Assert-InstallerRendering $true $false
   Invoke-Next
   if (!$installer.WaitForExit(20000)) { throw 'Installer did not exit after Finish' }
   if ($installer.ExitCode -ne 0) { throw "Installer exit code: $($installer.ExitCode)" }

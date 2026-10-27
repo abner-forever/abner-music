@@ -95,6 +95,9 @@ Var AbnerProgressDescription
   ${If} $AbnerPage == error
     Quit
   ${EndIf}
+  System::Call 'user32::GetWindowLong(p $AbnerPage, i -16) i.r0'
+  IntOp $0 $0 | 0x06000000
+  System::Call 'user32::SetWindowLong(p $AbnerPage, i -16, i r0)'
   SetCtlColors $AbnerPage 203D2E F6F7EE
   SendMessage $AbnerPage ${WM_SETFONT} $AbnerBodyFont 0
   GetDlgItem $0 $HWNDPARENT 3
@@ -443,6 +446,9 @@ FunctionEnd
 
 Function AbnerProgressShow
   StrCpy $AbnerInstalling 1
+  System::Call 'user32::GetWindowLong(p $mui.InstFilesPage, i -16) i.r0'
+  IntOp $0 $0 | 0x06000000
+  System::Call 'user32::SetWindowLong(p $mui.InstFilesPage, i -16, i r0)'
   !insertmacro AbnerMove $mui.InstFilesPage 334 72 418 348
   SetCtlColors $mui.InstFilesPage 203D2E F6F7EE
   System::Call 'user32::GetWindow(p $mui.InstFilesPage, i 5) p.r0'
