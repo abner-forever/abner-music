@@ -3,6 +3,13 @@ import type { DesktopBridge, UpdateStatus } from './shared/types';
 
 const bridge: DesktopBridge = {
   platform: process.platform,
+  music: {
+    search: (input, requestId) => ipcRenderer.invoke('music:search', input, requestId),
+    resolve: (input, requestId) => ipcRenderer.invoke('music:resolve', input, requestId),
+    picture: (remote, requestId) => ipcRenderer.invoke('music:picture', remote, requestId),
+    lyrics: (remote, requestId) => ipcRenderer.invoke('music:lyrics', remote, requestId),
+    cancel: (requestId) => ipcRenderer.send('music:cancel', requestId),
+  },
   library: {
     list: () => ipcRenderer.invoke('library:list'),
     importFiles: (folder = false) => ipcRenderer.invoke('library:import', folder),

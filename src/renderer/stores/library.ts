@@ -2,6 +2,7 @@ import { computed, reactive, watch } from 'vue';
 import type { Playlist, Track } from '../../shared/types';
 import { demoTracks, validateAudioUrl } from '../lib/music';
 import { deleteFile, readState, storeFile } from '../lib/storage';
+import { gdTrackId } from '../../shared/gd-music';
 
 interface LibraryState {
   tracks: Track[];
@@ -143,6 +144,15 @@ export function addNetworkTrack(url: string, title: string, artist: string) {
   };
   library.tracks.push(track);
   return track;
+}
+
+export function addRemoteTrack(track: Track) {
+  if (!track.remote) throw new Error('音乐源信息缺失，请重新搜索');
+  const id = gdTrackId(track.remote);
+  const existing = library.tracks.find((item) => item.id === id);
+  if (existing) return existing;
+  library.tracks.push({ ...track, id, source: id, kind: 'network', addedAt: Date.now() });
+  return library.tracks.find((item) => item.id === id)!;
 }
 
 export function createPlaylist(name: string) {

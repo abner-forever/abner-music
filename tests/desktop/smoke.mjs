@@ -210,6 +210,100 @@ try {
   await page.getByRole('button', { name: '从音乐库移除', exact: true }).click();
   await expect(page.locator('.track-row')).toHaveCount(0);
   assert.equal(existsSync(fixture), true);
+  await application.evaluate(({ net }) => {
+    const originalFetch = net.fetch;
+    globalThis.__gdRequests = [];
+    globalThis.__gdCancelled = false;
+    net.fetch = async (input, options) => {
+      const url = new URL(String(input));
+      if (url.origin !== 'https://music-api.gdstudio.xyz') return originalFetch(input, options);
+      const type = url.searchParams.get('types');
+      globalThis.__gdRequests.push(type);
+      if (url.searchParams.get('name') === 'cancel-test') {
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener('abort', () => {
+            globalThis.__gdCancelled = true;
+            reject(options.signal.reason);
+          });
+        });
+      }
+      if (type === 'search')
+        return Response.json([
+          {
+            id: 'native-123',
+            name: '桌面在线音乐',
+            artist: ['GD 测试'],
+            album: '原生桥接',
+            source: 'netease',
+            pic_id: 'native-cover',
+            lyric_id: 'native-words',
+          },
+        ]);
+      if (type === 'url')
+        return Response.json({ url: 'https://media.example/gd-fixture.wav', br: 320 });
+      if (type === 'pic') return Response.json({ url: '' });
+      return Response.json({ lyric: '[00:00]原生在线歌词\n[00:03]播放继续', tlyric: '' });
+    };
+  });
+  await page.route('https://media.example/gd-fixture.wav', (route) => {
+    const range = route
+      .request()
+      .headers()
+      .range?.match(/bytes=(\d+)-(\d*)/);
+    const start = range ? Number(range[1]) : 0;
+    const end = range?.[2] ? Math.min(Number(range[2]), wav.length - 1) : wav.length - 1;
+    return route.fulfill({
+      status: range ? 206 : 200,
+      contentType: 'audio/wav',
+      body: wav.subarray(start, end + 1),
+      headers: {
+        'Accept-Ranges': 'bytes',
+        'Content-Length': String(end - start + 1),
+        ...(range ? { 'Content-Range': `bytes ${start}-${end}/${wav.length}` } : {}),
+      },
+    });
+  });
+  await page.locator('.sidebar').getByRole('button', { name: '网络音乐', exact: true }).click();
+  await page.getByRole('button', { name: '在线搜索', exact: true }).click();
+  await page.getByRole('textbox', { name: '在线搜索关键词' }).fill('桌面测试');
+  await page.getByRole('button', { name: '搜索在线音乐', exact: true }).click();
+  await expect(page.locator('.online-track')).toHaveCount(1);
+  await page.getByRole('button', { name: '在线收藏 桌面在线音乐', exact: true }).click();
+  await page.getByRole('button', { name: '在线播放 桌面在线音乐', exact: true }).click();
+  await expect(page.locator('.play-toggle')).toHaveAttribute('aria-label', '暂停');
+  await page.getByRole('slider', { name: '播放进度' }).fill('6');
+  await expect(page.locator('.timeline > span').first()).toHaveText('0:06');
+  await page.getByRole('button', { name: '歌词', exact: true }).click();
+  await expect(page.locator('.lyrics-lines button')).toHaveCount(2);
+  const persistedMusic = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('abner:library')),
+  );
+  assert.equal(persistedMusic.tracks[0].source, 'gd:netease:native-123');
+  assert.equal(persistedMusic.favorites.includes('gd:netease:native-123'), true);
+  assert.equal(JSON.stringify(persistedMusic).includes('gd-fixture.wav'), false);
+  assert.deepEqual(await application.evaluate(() => globalThis.__gdRequests), [
+    'search',
+    'url',
+    'pic',
+    'lyric',
+  ]);
+  assert.match(
+    await page.evaluate(() =>
+      window.desktop.music
+        .search({ platform: 'invalid', keyword: 'test', page: 1 }, 'invalid-platform')
+        .catch((error) => error.message),
+    ),
+    /不支持的音乐平台/,
+  );
+  await page.evaluate(() => {
+    window.__gdCancelResult = window.desktop.music
+      .search({ platform: 'netease', keyword: 'cancel-test', page: 1 }, 'cancel-request')
+      .catch((error) => error.message);
+  });
+  await expect.poll(() => application.evaluate(() => globalThis.__gdRequests.length)).toBe(5);
+  await page.evaluate(() => window.desktop.music.cancel('cancel-request'));
+  await expect.poll(() => application.evaluate(() => globalThis.__gdCancelled)).toBe(true);
+  assert.match(await page.evaluate(() => window.__gdCancelResult), /abort|取消/i);
   await application.evaluate(({ net, shell }) => {
     const originalFetch = net.fetch;
     net.fetch = async (input, options) => {
@@ -262,7 +356,7 @@ try {
   await expect.poll(() => appProcess.exitCode).toBe(0);
   application = undefined;
   console.log(
-    `Packaged desktop smoke passed (${process.platform}/${arch}, ${packageInfo.version}): system theme, compact sidebar, native import, metadata, LRC, Range/CORS, equalizer playback, background playback and restore, mini window, persistence, safe removal, manual update changelog, GitHub link and explicit quit.`,
+    `Packaged desktop smoke passed (${process.platform}/${arch}, ${packageInfo.version}): system theme, compact sidebar, native import, metadata, LRC, Range/CORS, equalizer playback, background playback and restore, mini window, persistence, safe removal, GD search/playback/lyrics/favorites/cancellation over native IPC, manual update changelog, GitHub link and explicit quit.`,
   );
 } catch (error) {
   const page = application?.windows()[0];

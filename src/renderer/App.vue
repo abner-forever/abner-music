@@ -38,6 +38,7 @@ import AppSelect from './components/AppSelect.vue';
 import CoverArt from './components/CoverArt.vue';
 import TrackTable from './components/TrackTable.vue';
 import PlayerBar from './components/PlayerBar.vue';
+import OnlineMusic from './components/OnlineMusic.vue';
 import { collections, formatTime, parseLyrics } from './lib/music';
 import { readPlaylistArtwork } from './lib/artwork';
 import { readState } from './lib/storage';
@@ -84,6 +85,7 @@ type Modal =
 const page = ref('discover');
 const search = ref('');
 const filter = ref('all');
+const networkTab = ref('library');
 const sort = ref('default');
 const modal = ref<Modal>('');
 const queueOpen = ref(false);
@@ -311,6 +313,7 @@ function submitNetwork(play = true) {
     networkUrl.value = '';
     networkTitle.value = '';
     networkArtist.value = '';
+    networkTab.value = 'library';
     navigate('network');
     toast('网络资源已加入音乐库');
     if (play) void playTrack(track, [track]);
@@ -982,7 +985,7 @@ onUnmounted(() => {
                     : page === 'recent'
                       ? '音乐会记得，那些曾经共鸣的时刻。'
                       : page === 'network'
-                        ? '连接你喜欢的电台、音频与音乐直链。'
+                        ? '在线搜索喜欢的歌曲，或连接电台与音频直链。'
                         : '每一首喜欢的歌，都在这里。'
                 }}
               </p>
@@ -1001,55 +1004,82 @@ onUnmounted(() => {
               <Plus :size="17" />导入音乐
             </button>
           </div>
-          <div class="library-toolbar">
-            <div class="library-toolbar-left">
-              <button class="button button-dark" :disabled="!pageTracks.length" @click="playPage()">
-                <Play :size="15" fill="currentColor" />播放全部</button
-              ><button
-                class="icon-button shuffle-all"
-                aria-label="随机播放全部"
-                :disabled="!pageTracks.length"
-                @click="playPage(true)"
-              >
-                <Shuffle :size="19" /></button
-              ><span>{{ pageTracks.length }} 首音乐</span>
-            </div>
-            <div class="library-toolbar-right">
-              <div v-if="page !== 'network' && page !== 'recent'" class="filter-tabs">
-                <button :class="{ active: filter === 'all' }" @click="filter = 'all'">全部</button
-                ><button :class="{ active: filter === 'local' }" @click="filter = 'local'">
-                  本地</button
-                ><button :class="{ active: filter === 'network' }" @click="filter = 'network'">
-                  网络
-                </button>
-              </div>
-              <AppSelect
-                v-model="sort"
-                label="歌曲排序"
-                :options="[
-                  { value: 'default', label: '默认排序' },
-                  { value: 'title', label: '歌曲名称' },
-                  { value: 'added', label: '最近添加' },
-                  { value: 'duration', label: '歌曲时长' },
-                ]"
-              />
-            </div>
-          </div>
-          <TrackTable
-            :tracks="pageTracks"
-            :empty-text="
-              search ? '没有找到相关音乐' : page === 'favorites' ? '收藏你的第一首心动' : undefined
-            "
-            @menu="openContextMenu"
-            @add="addPlaylist"
-          />
-          <button
-            v-if="!pageTracks.length && !search"
-            class="empty-import button"
-            @click="page === 'network' ? openModal('network') : importLocal()"
+          <div
+            v-if="page === 'network' && !search"
+            class="filter-tabs network-tabs"
+            style="margin-bottom: 24px"
           >
-            <Plus :size="16" />{{ page === 'network' ? '添加网络资源' : '导入音乐' }}
-          </button>
+            <button :class="{ active: networkTab === 'library' }" @click="networkTab = 'library'">
+              已添加音乐
+            </button>
+            <button :class="{ active: networkTab === 'online' }" @click="networkTab = 'online'">
+              在线搜索
+            </button>
+          </div>
+          <OnlineMusic
+            v-if="page === 'network' && !search && networkTab === 'online'"
+            @add="addPlaylist"
+            @notice="toast"
+          />
+          <template v-else>
+            <div class="library-toolbar">
+              <div class="library-toolbar-left">
+                <button
+                  class="button button-dark"
+                  :disabled="!pageTracks.length"
+                  @click="playPage()"
+                >
+                  <Play :size="15" fill="currentColor" />播放全部</button
+                ><button
+                  class="icon-button shuffle-all"
+                  aria-label="随机播放全部"
+                  :disabled="!pageTracks.length"
+                  @click="playPage(true)"
+                >
+                  <Shuffle :size="19" /></button
+                ><span>{{ pageTracks.length }} 首音乐</span>
+              </div>
+              <div class="library-toolbar-right">
+                <div v-if="page !== 'network' && page !== 'recent'" class="filter-tabs">
+                  <button :class="{ active: filter === 'all' }" @click="filter = 'all'">全部</button
+                  ><button :class="{ active: filter === 'local' }" @click="filter = 'local'">
+                    本地</button
+                  ><button :class="{ active: filter === 'network' }" @click="filter = 'network'">
+                    网络
+                  </button>
+                </div>
+                <AppSelect
+                  v-model="sort"
+                  label="歌曲排序"
+                  :options="[
+                    { value: 'default', label: '默认排序' },
+                    { value: 'title', label: '歌曲名称' },
+                    { value: 'added', label: '最近添加' },
+                    { value: 'duration', label: '歌曲时长' },
+                  ]"
+                />
+              </div>
+            </div>
+            <TrackTable
+              :tracks="pageTracks"
+              :empty-text="
+                search
+                  ? '没有找到相关音乐'
+                  : page === 'favorites'
+                    ? '收藏你的第一首心动'
+                    : undefined
+              "
+              @menu="openContextMenu"
+              @add="addPlaylist"
+            />
+            <button
+              v-if="!pageTracks.length && !search"
+              class="empty-import button"
+              @click="page === 'network' ? openModal('network') : importLocal()"
+            >
+              <Plus :size="16" />{{ page === 'network' ? '添加网络资源' : '导入音乐' }}
+            </button>
+          </template>
         </template>
       </main>
     </div>

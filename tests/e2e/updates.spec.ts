@@ -11,6 +11,13 @@ test('update check opens release notes and download uses the desktop bridge', as
     };
     window.desktop = {
       platform: 'darwin',
+      music: {
+        search: async () => [],
+        resolve: async () => ({ url: '', quality: 0 }),
+        picture: async () => '',
+        lyrics: async () => ({ lyric: '', translation: '' }),
+        cancel() {},
+      },
       library: {
         list: async () => [],
         importFiles: async () => ({ tracks: [], skipped: 0 }),

@@ -1,3 +1,39 @@
+export type MusicPlatform = 'netease' | 'joox' | 'bilibili';
+export type MusicQuality = 128 | 192 | 320 | 740 | 999;
+
+export interface GdMusicReference {
+  provider: 'gd';
+  platform: MusicPlatform;
+  trackId: string;
+  pictureId?: string;
+  lyricId?: string;
+}
+
+export interface MusicSearch {
+  platform: MusicPlatform;
+  keyword: string;
+  page: number;
+}
+
+export interface MusicResolution {
+  remote: GdMusicReference;
+  quality: MusicQuality;
+  refresh?: boolean;
+}
+
+export interface MusicLyrics {
+  lyric: string;
+  translation: string;
+}
+
+export interface MusicBridge {
+  search(input: MusicSearch, requestId: string): Promise<Track[]>;
+  resolve(input: MusicResolution, requestId: string): Promise<{ url: string; quality: number }>;
+  picture(remote: GdMusicReference, requestId: string): Promise<string>;
+  lyrics(remote: GdMusicReference, requestId: string): Promise<MusicLyrics>;
+  cancel(requestId: string): void;
+}
+
 export interface Track {
   id: string;
   title: string;
@@ -10,6 +46,8 @@ export interface Track {
   format: string;
   addedAt: number;
   lyrics?: string;
+  translatedLyrics?: string;
+  remote?: GdMusicReference;
 }
 
 export interface Playlist {
@@ -36,6 +74,7 @@ export interface UpdateStatus {
 
 export interface DesktopBridge {
   platform: string;
+  music: MusicBridge;
   library: {
     list(): Promise<Track[]>;
     importFiles(folder?: boolean): Promise<{ tracks: Track[]; skipped: number }>;

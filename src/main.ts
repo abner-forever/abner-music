@@ -18,6 +18,7 @@ import { mkdir, readFile, readdir, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { serveMedia } from './desktop/media';
 import { createUpdateController } from './desktop/updates';
+import { createGdMusicController } from './desktop/gd-music';
 import { releasePageUrl } from './shared/updates';
 import type { Track, UpdateStatus } from './shared/types';
 
@@ -49,6 +50,7 @@ let updateStatus: UpdateStatus = {
 let fullBounds: Electron.Rectangle | undefined;
 let importing = false;
 let updateController: ReturnType<typeof createUpdateController> | undefined;
+let musicController: ReturnType<typeof createGdMusicController> | undefined;
 let records: Array<{ track: Track; file: string }> = [];
 const extensions = new Set([
   '.mp3',
@@ -230,6 +232,7 @@ function createWindow() {
     mainWindow?.hide();
   });
   mainWindow.on('closed', () => {
+    musicController?.dispose();
     mainWindow = null;
   });
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -258,6 +261,18 @@ if (!squirrelStartup && app.requestSingleInstanceLock()) {
       if (!record || !existsSync(record.file))
         return new Response('File not found', { status: 404 });
       return serveMedia(request, record.file);
+    });
+    const music = createGdMusicController((url, init) => net.fetch(url, init));
+    musicController = music;
+    for (const method of ['search', 'resolve', 'picture', 'lyrics'] as const) {
+      ipcMain.handle(`music:${method}`, (event, input, requestId: unknown) => {
+        trusted(event);
+        return music.run<unknown>(requestId, (signal) => music.client[method](input, signal));
+      });
+    }
+    ipcMain.on('music:cancel', (event, requestId: unknown) => {
+      trusted(event);
+      music.cancel(requestId);
     });
     ipcMain.handle('library:list', (event) => {
       trusted(event);

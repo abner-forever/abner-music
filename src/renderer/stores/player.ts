@@ -4,6 +4,7 @@ import { demoSource } from '../lib/demo';
 import { loadFile, readState } from '../lib/storage';
 import { shuffled } from '../lib/music';
 import { library, rememberTrack } from './library';
+import { gdMusic } from '../lib/gd-music';
 
 const saved = readState<{
   volume: number;
@@ -59,6 +60,9 @@ let audioContext: AudioContext | undefined;
 let filters: BiquadFilterNode[] = [];
 let originalQueue: string[] = [];
 let retryCount = 0;
+let remoteRequest: AbortController | undefined;
+let resolvedAt = 0;
+let remoteRetries = 0;
 
 audio.volume = player.volume;
 for (const element of [localAudio, networkAudio]) {
@@ -91,6 +95,12 @@ for (const element of [localAudio, networkAudio]) {
   });
   element.addEventListener('error', () => {
     if (audio !== element) return;
+    if (currentTrack.value?.remote) {
+      if (!loadedId || retryRemote(currentTrack.value)) return;
+      loadedId = '';
+      handleError(new Error('该歌曲暂时无法播放，请重试或切换音乐平台'));
+      return;
+    }
     player.loading = false;
     player.playing = false;
     player.error = '这首歌暂时无法播放，请检查文件、音频格式或网络链接';
@@ -168,8 +178,49 @@ function updateMediaState() {
     });
 }
 
-export async function playTrack(track: Track, tracks?: Track[]) {
+function retryRemote(track: Track) {
+  if (remoteRetries >= 1) return false;
+  remoteRetries++;
+  const resumeTime = audio.currentTime;
+  loadedId = '';
+  void playTrack(track, undefined, { refresh: true, resumeTime, retry: true });
+  return true;
+}
+
+function loadRemoteMetadata(track: Track, signal: AbortSignal) {
+  if (!track.remote) return;
+  void gdMusic
+    .picture(track.remote, signal)
+    .then((artwork) => {
+      if (!signal.aborted && artwork && library.tracks.includes(track)) track.artwork = artwork;
+    })
+    .catch(() => undefined);
+  void gdMusic
+    .lyrics(track.remote, signal)
+    .then((lyrics) => {
+      if (signal.aborted || !library.tracks.includes(track)) return;
+      track.lyrics = lyrics.lyric;
+      track.translatedLyrics = lyrics.translation;
+    })
+    .catch(() => undefined);
+}
+
+export async function playTrack(
+  track: Track,
+  tracks?: Track[],
+  options: { refresh?: boolean; resumeTime?: number; retry?: boolean } = {},
+) {
   const token = ++generation;
+  remoteRequest?.abort();
+  const request = new AbortController();
+  remoteRequest = request;
+  if (!options.retry) remoteRetries = 0;
+  const refresh = Boolean(
+    track.remote &&
+    (options.refresh || (loadedId === track.id && Date.now() - resolvedAt > 300_000)),
+  );
+  const resumeTime =
+    options.resumeTime ?? (refresh && loadedId === track.id ? audio.currentTime : 0);
   const nextElement = track.kind === 'network' ? networkAudio : localAudio;
   if (audio !== nextElement) {
     audio.pause();
@@ -188,7 +239,8 @@ export async function playTrack(track: Track, tracks?: Track[]) {
   player.trackId = track.id;
   player.error = '';
   player.loading = true;
-  if (loadedId !== track.id) {
+  if (loadedId !== track.id || refresh) {
+    loadedId = '';
     audio.pause();
     player.currentTime = 0;
     player.duration = track.duration;
@@ -198,7 +250,15 @@ export async function playTrack(track: Track, tracks?: Track[]) {
     }
     let source = track.source;
     try {
-      if (track.kind === 'demo') source = demoSource(track.id, track.duration);
+      if (track.remote) {
+        const result = await gdMusic.resolve(
+          { remote: track.remote, quality: 320, refresh },
+          request.signal,
+        );
+        if (token !== generation) return;
+        source = result.url;
+        resolvedAt = Date.now();
+      } else if (track.kind === 'demo') source = demoSource(track.id, track.duration);
       else if (track.source.startsWith('indexeddb:')) {
         const file = await loadFile(track.id);
         if (!file) throw new Error('原音频文件已不存在，请重新导入');
@@ -210,25 +270,43 @@ export async function playTrack(track: Track, tracks?: Track[]) {
       audio.src = source;
       loadedId = track.id;
       audio.playbackRate = player.rate;
+      if (resumeTime > 0) {
+        const element = audio;
+        element.addEventListener(
+          'loadedmetadata',
+          () => {
+            if (token === generation && Number.isFinite(element.duration))
+              element.currentTime = Math.min(resumeTime, element.duration);
+          },
+          { once: true, signal: request.signal },
+        );
+      }
     } catch (error) {
-      handleError(error);
+      if (token === generation) handleError(error);
       return;
     }
   }
-  if (audioContext?.state === 'suspended') await audioContext.resume();
   try {
+    if (audioContext?.state === 'suspended') await audioContext.resume();
+    if (token !== generation) return;
     await audio.play();
     if (token !== generation) return;
     rememberTrack(track.id);
     updateMediaState();
+    loadRemoteMetadata(track, request.signal);
   } catch (error) {
-    if (token === generation) handleError(error);
+    if (token === generation) {
+      if (track.remote && audio.error && retryRemote(track)) return;
+      if (track.remote) loadedId = '';
+      handleError(error);
+    }
   }
 }
 
 export function togglePlay() {
   if (player.loading) {
     generation++;
+    remoteRequest?.abort();
     audio.pause();
     player.loading = false;
     return;
@@ -293,6 +371,7 @@ export function removeFromQueue(id: string) {
 }
 export function stopPlayback() {
   generation++;
+  remoteRequest?.abort();
   audio.pause();
   audio.removeAttribute('src');
   audio.load();

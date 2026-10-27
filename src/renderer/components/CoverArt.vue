@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed, useId } from 'vue';
+import { computed, ref, useId, watch } from 'vue';
 const props = withDefaults(defineProps<{ artwork?: string; title?: string }>(), {
   artwork: 'forest',
   title: '',
 });
 const uid = useId().replace(/:/g, '');
-const isImage = computed(() => /^(data:|https?:|blob:)/.test(props.artwork));
+const failed = ref(false);
+watch(
+  () => props.artwork,
+  () => {
+    failed.value = false;
+  },
+);
+const isImage = computed(() => !failed.value && /^(data:|https?:|blob:)/.test(props.artwork));
 const palettes: Record<string, string[]> = {
   sunset: ['#e9dbc6', '#d8a475', '#a3492c', '#e9b07a', '#9a5b3b'],
   forest: ['#d6dfcc', '#acb89b', '#405c49', '#d9d4ac', '#6f8262'],
@@ -19,7 +26,14 @@ const colors = computed(() => palettes[props.artwork] || palettes.forest);
 
 <template>
   <div class="cover-art" :class="`art-${artwork}`" :aria-label="title || '专辑封面'" role="img">
-    <img v-if="isImage" :src="artwork" alt="" loading="lazy" />
+    <img
+      v-if="isImage"
+      :src="artwork"
+      alt=""
+      loading="lazy"
+      referrerpolicy="no-referrer"
+      @error="failed = true"
+    />
     <svg
       v-else
       viewBox="0 0 400 400"

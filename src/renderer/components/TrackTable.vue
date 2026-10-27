@@ -5,6 +5,7 @@ import { formatTime } from '../lib/music';
 import { library, toggleFavorite } from '../stores/library';
 import { player, playTrack, togglePlay } from '../stores/player';
 import CoverArt from './CoverArt.vue';
+import { musicPlatforms } from '../../shared/gd-music';
 defineProps<{ tracks: Track[]; emptyText?: string }>();
 defineEmits<{ menu: [track: Track, event: MouseEvent]; add: [track: Track] }>();
 </script>
@@ -51,7 +52,15 @@ defineEmits<{ menu: [track: Track, event: MouseEvent]; add: [track: Track] }>();
       </div>
       <span class="track-album">{{ track.album }}</span>
       <span class="source-label" :class="track.kind">{{
-        track.kind === 'demo' ? '原创试听' : track.kind === 'local' ? '本地' : '网络'
+        track.remote
+          ? musicPlatforms
+              .find((item) => item.value === track.remote?.platform)
+              ?.label.replace('（实验）', '')
+          : track.kind === 'demo'
+            ? '原创试听'
+            : track.kind === 'local'
+              ? '本地'
+              : '网络'
       }}</span>
       <span class="track-duration">{{ track.duration ? formatTime(track.duration) : '—' }}</span>
       <div class="track-actions">
