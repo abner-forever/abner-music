@@ -369,6 +369,11 @@ export function addToQueue(track: Track) {
 export function removeFromQueue(id: string) {
   player.queue = player.queue.filter((item) => item !== id);
 }
+/** 在线曲目下载成本地曲目后，把队列和当前曲目指向新的本地文件。 */
+export function replaceQueueTrack(from: string, to: string) {
+  player.queue = player.queue.map((id) => (id === from ? to : id));
+  if (player.trackId === from) player.trackId = to;
+}
 export function stopPlayback() {
   generation++;
   remoteRequest?.abort();

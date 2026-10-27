@@ -105,9 +105,9 @@ for (const size of [
     await page.getByRole('button', { name: '选择音乐文件', exact: true }).click();
     await chooser;
     await page.locator('.settings-nav').click();
-    await expect(page.getByRole('dialog', { name: '偏好设置' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible();
     await expect(page.getByRole('button', { name: '跟随系统', exact: true })).toBeInViewport();
-    const dialog = page.getByRole('dialog', { name: '偏好设置' });
+    const dialog = page.getByRole('dialog', { name: '设置' });
     const dialogBounds = await dialog.boundingBox();
     expect(dialogBounds!.x + dialogBounds!.width).toBeLessThanOrEqual(size.width);
     await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
@@ -121,7 +121,7 @@ for (const size of [
       .click();
     await expect(page.getByRole('heading', { name: '测试歌单 30', exact: true })).toBeVisible();
     await page.locator('.settings-nav').click();
-    await expect(page.getByRole('dialog', { name: '偏好设置' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible();
   });
 }
 

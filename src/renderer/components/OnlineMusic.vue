@@ -112,7 +112,12 @@ async function download(track: Track) {
         suggestedName: track.artist + ' - ' + track.title,
         format: track.format,
       });
-      emit('notice', result.saved ? '已下载：' + result.fileName : '已取消下载');
+      emit(
+        'notice',
+        result.saved
+          ? `已下载：${result.fileName}${result.lyricsSaved ? '（含歌词）' : '（这首歌暂无歌词）'}`
+          : '已取消下载',
+      );
       return;
     }
     const resolved = await gdMusic.resolve({ remote: track.remote, quality: 320, refresh: true });

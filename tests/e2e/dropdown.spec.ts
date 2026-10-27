@@ -42,6 +42,7 @@ test('every album and library view uses the shared dropdown without native selec
   await page.getByRole('textbox', { name: '搜索音乐' }).fill('蓝色');
   await expect(page.getByRole('combobox', { name: '歌曲排序' })).toHaveClass(/app-select-trigger/);
   await page.getByRole('button', { name: /设置 v/ }).click();
+  await page.locator('.settings-tabs').getByRole('button', { name: '播放' }).click();
   await expect(page.getByRole('combobox', { name: '播放速度' })).toHaveClass(/app-select-trigger/);
   await expect(page.locator('select')).toHaveCount(0);
 });
@@ -94,6 +95,7 @@ test('speed dropdown works in settings with dark theme and Escape preserves the 
   await page.goto('/');
   await page.getByRole('button', { name: /设置 v/ }).click();
   await page.getByRole('button', { name: '深色', exact: true }).click();
+  await page.locator('.settings-tabs').getByRole('button', { name: '播放' }).click();
   const speed = page.getByRole('combobox', { name: '播放速度' });
   await speed.click();
   await expect(page.getByRole('option', { name: '1.0×' })).toHaveAttribute('aria-selected', 'true');

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue';
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -11,10 +11,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Download,
   Folder,
   FolderOpen,
   Headphones,
   Heart,
+  Info,
   LayoutGrid,
   Link2,
   ListMusic,
@@ -22,6 +24,8 @@ import {
   Maximize2,
   Minus,
   Music2,
+  Palette,
+  Pause,
   Play,
   Plus,
   Search,
@@ -32,12 +36,13 @@ import {
   Trash2,
   X,
 } from '@lucide/vue';
-import type { MusicPlatform, Track, UpdateStatus } from '../shared/types';
+import type { LibraryStorageInfo, MusicPlatform, Track, UpdateStatus } from '../shared/types';
 import packageInfo from '../../package.json';
 import AppSelect from './components/AppSelect.vue';
 import CoverArt from './components/CoverArt.vue';
 import TrackTable from './components/TrackTable.vue';
 import PlayerBar from './components/PlayerBar.vue';
+import WindowControls from './components/WindowControls.vue';
 import OnlineMusic from './components/OnlineMusic.vue';
 import { collections, formatTime, parseLyrics } from './lib/music';
 import { readPlaylistArtwork } from './lib/artwork';
@@ -46,6 +51,7 @@ import {
   addNetworkTrack,
   createPlaylist,
   demoEnabled,
+  downloadToLibrary,
   favoriteTracks,
   importBrowserFiles,
   importMusic,
@@ -64,6 +70,7 @@ import {
   previousTrack,
   queueTracks,
   removeFromQueue,
+  replaceQueueTrack,
   seek,
   setEqualizer,
   setSleepTimer,
@@ -102,6 +109,7 @@ const networkArtist = ref('');
 const playlistName = ref('');
 const lyricDraft = ref('');
 const selectedTrack = ref<Track>();
+const downloadingTrack = ref('');
 const contextMenu = ref<{ track: Track; x: number; y: number }>();
 const fileInput = ref<HTMLInputElement>();
 const coverInput = ref<HTMLInputElement>();
@@ -121,11 +129,29 @@ const releaseDate = computed(() => {
   return Number.isFinite(date.getTime()) ? date.toLocaleDateString('zh-CN') : '';
 });
 const preferences = ref(
-  readState<{ theme: 'light' | 'dark' | 'system'; showDemos: boolean }>('abner:preferences', {
+  readState<{
+    theme: 'light' | 'dark' | 'system';
+    showDemos: boolean;
+    sidebarWidth: number;
+    sidebarCompact: boolean;
+  }>('abner:preferences', {
     theme: 'system',
     showDemos: demoEnabled,
+    sidebarWidth: 218,
+    sidebarCompact: false,
   }),
 );
+const sidebarWidth = ref(
+  Math.min(380, Math.max(150, Number(preferences.value.sidebarWidth) || 218)),
+);
+const sidebarCompact = ref(Boolean(preferences.value.sidebarCompact));
+const sidebarElement = ref<HTMLElement>();
+const sidebarStyle = computed(
+  () => `--sidebar-width: ${sidebarCompact.value ? 68 : sidebarWidth.value}px`,
+);
+let resizingSidebar = false;
+type SettingsTab = 'appearance' | 'playback' | 'storage' | 'window' | 'about';
+const settingsTab = ref<SettingsTab>('appearance');
 const systemAppearance = window.matchMedia('(prefers-color-scheme: dark)');
 const systemDark = ref(systemAppearance.matches);
 const resolvedTheme = computed(() =>
@@ -144,6 +170,14 @@ const historyIndex = ref(0);
 const isDesktop = Boolean(window.desktop);
 const desktop = window.desktop;
 const platform = window.desktop?.platform || 'browser';
+const settingsTabs: Array<{ value: SettingsTab; label: string; icon: Component }> = [
+  { value: 'appearance', label: '外观', icon: Palette },
+  { value: 'playback', label: '播放', icon: Headphones },
+  ...(isDesktop ? [{ value: 'storage' as const, label: '存储', icon: Folder }] : []),
+  ...(isDesktop ? [{ value: 'window' as const, label: '窗口', icon: Maximize2 }] : []),
+  { value: 'about', label: '关于', icon: Info },
+];
+const storage = ref<LibraryStorageInfo>();
 const showDemos = computed(() => demoEnabled && preferences.value.showDemos);
 const allTracks = computed(() =>
   library.tracks.filter((track) => showDemos.value || track.kind !== 'demo'),
@@ -275,10 +309,85 @@ function openModal(value: Modal) {
   modal.value = value;
   importMenu.value = false;
   contextMenu.value = undefined;
+  if (value === 'settings') void refreshStorage();
 }
 function closeModal() {
   modal.value = '';
   formError.value = '';
+}
+function syncSidebarPreference() {
+  preferences.value.sidebarWidth = sidebarWidth.value;
+  preferences.value.sidebarCompact = sidebarCompact.value;
+}
+function startSidebarResize(event: PointerEvent) {
+  if (event.button !== 0) return;
+  resizingSidebar = true;
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  document.body.classList.add('is-resizing-sidebar');
+}
+function moveSidebarResize(event: PointerEvent) {
+  if (!resizingSidebar) return;
+  const left = sidebarElement.value?.getBoundingClientRect().left ?? 0;
+  const raw = event.clientX - left;
+  // 拖到阈值以内直接收成窄边，方便一键回到图标模式
+  if (raw < 150) sidebarCompact.value = true;
+  else {
+    sidebarCompact.value = false;
+    sidebarWidth.value = Math.min(380, Math.round(raw));
+  }
+}
+function endSidebarResize(event: PointerEvent) {
+  if (!resizingSidebar) return;
+  resizingSidebar = false;
+  try {
+    (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+  } catch {
+    /* 指针可能已经释放 */
+  }
+  document.body.classList.remove('is-resizing-sidebar');
+  syncSidebarPreference();
+}
+function toggleSidebarCompact() {
+  sidebarCompact.value = !sidebarCompact.value;
+  syncSidebarPreference();
+}
+async function refreshStorage() {
+  if (!window.desktop) return;
+  try {
+    storage.value = await window.desktop.library.storage();
+  } catch {
+    storage.value = undefined;
+  }
+}
+async function openStorageFolder() {
+  try {
+    await window.desktop?.library.openStorage();
+  } catch (error) {
+    toast(errorMessage(error));
+  }
+}
+async function changeStorage() {
+  if (!window.desktop) return;
+  try {
+    const next = await window.desktop.library.chooseStorage();
+    if (!next.directory || next.directory === storage.value?.directory) return;
+    storage.value = next;
+    toast('下载保存位置已更新');
+  } catch (error) {
+    toast(errorMessage(error));
+  }
+}
+async function revealTrack(track: Track) {
+  contextMenu.value = undefined;
+  if (!window.desktop) {
+    toast('打开文件位置需要在桌面应用中操作');
+    return;
+  }
+  try {
+    await window.desktop.library.reveal(track.id);
+  } catch (error) {
+    toast(errorMessage(error));
+  }
 }
 async function importLocal(folder = false) {
   importMenu.value = false;
@@ -317,9 +426,21 @@ async function handleFiles(files?: FileList | File[]) {
     if (fileInput.value) fileInput.value.value = '';
   }
 }
+/** 只有真正拖入文件时才当作导入，拖链接/图片/文字不会触发。 */
+function isFileDrag(event: DragEvent) {
+  return Boolean(event.dataTransfer && [...event.dataTransfer.types].includes('Files'));
+}
+function onDragOver(event: DragEvent) {
+  if (isFileDrag(event)) dragging.value = true;
+}
+function onDragLeave(event: DragEvent) {
+  // 鼠标在子元素之间移动也会触发 dragleave，只有移出窗口时才收起遮罩
+  if (!event.relatedTarget) dragging.value = false;
+}
 function onDrop(event: DragEvent) {
   event.preventDefault();
   dragging.value = false;
+  if (!isFileDrag(event)) return;
   if (isDesktop) {
     toast('请在打开的系统窗口中选择音乐文件');
     void importLocal();
@@ -389,19 +510,47 @@ function openContextMenu(track: Track, event: MouseEvent) {
   contextMenu.value = {
     track,
     x: Math.min(event.clientX - 166, window.innerWidth - 215),
-    y: Math.min(event.clientY + 8, window.innerHeight - 300),
+    y: Math.min(event.clientY + 8, window.innerHeight - 360),
   };
+}
+async function downloadTrackLocally(track: Track) {
+  contextMenu.value = undefined;
+  if (downloadingTrack.value) {
+    toast('还有一首歌正在下载，请稍候');
+    return;
+  }
+  if (!window.desktop) {
+    toast('下载到本地需要在桌面应用中操作');
+    return;
+  }
+  downloadingTrack.value = track.id;
+  toast(`正在下载「${track.title}」…`);
+  try {
+    const local = await downloadToLibrary(track);
+    replaceQueueTrack(track.id, local.id);
+    toast(local.lyrics ? `已下载到本地（含歌词）：${local.title}` : `已下载到本地：${local.title}`);
+  } catch (error) {
+    toast(errorMessage(error));
+  } finally {
+    downloadingTrack.value = '';
+  }
 }
 async function deleteTrack(track: Track) {
   contextMenu.value = undefined;
   try {
-    await removeTrack(track.id);
+    const result = await removeTrack(track.id);
     removeFromQueue(track.id);
     if (player.trackId === track.id) {
       stopPlayback();
       player.trackId = queueTracks.value[0]?.id || '';
     }
-    toast('已从音乐库移除，原文件保留');
+    toast(
+      result.fileDeleted
+        ? '已从音乐库移除，本地文件已删除'
+        : track.kind === 'network'
+          ? '已从音乐库移除'
+          : '已从音乐库移除，原文件保留',
+    );
   } catch (error) {
     toast(errorMessage(error));
   }
@@ -625,13 +774,20 @@ onUnmounted(() => {
 <template>
   <div
     class="app-shell"
-    :class="{ 'is-mini': mini, 'is-desktop': isDesktop, 'is-windows': platform === 'win32' }"
+    :class="{
+      'is-mini': mini,
+      'is-desktop': isDesktop,
+      'is-windows': platform === 'win32',
+      'is-compact-sidebar': sidebarCompact,
+    }"
+    :style="sidebarStyle"
     @click="backgroundClick"
-    @dragover.prevent="dragging = true"
-    @dragleave="dragging = !($event.target as HTMLElement).classList.contains('drop-overlay')"
+    @dragover.prevent="onDragOver"
+    @dragleave="onDragLeave"
+    @dragend="dragging = false"
     @drop="onDrop"
   >
-    <aside class="sidebar">
+    <aside ref="sidebarElement" class="sidebar">
       <div class="sidebar-top-drag">
         <div v-if="!isDesktop" class="traffic-lights"><i /><i /><i /></div>
       </div>
@@ -709,6 +865,18 @@ onUnmounted(() => {
           <Settings2 :size="17" /><span>设置</span><small>v{{ version }}</small>
         </button>
       </div>
+      <div
+        class="sidebar-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="拖动调整侧边栏宽度"
+        title="拖动调整宽度，拖到最窄或双击收起"
+        @pointerdown.prevent="startSidebarResize"
+        @pointermove="moveSidebarResize"
+        @pointerup="endSidebarResize"
+        @pointercancel="endSidebarResize"
+        @dblclick="toggleSidebarCompact"
+      />
     </aside>
 
     <div class="main-shell">
@@ -773,13 +941,7 @@ onUnmounted(() => {
             a<span />
           </button>
         </div>
-        <div v-if="platform === 'win32'" class="window-controls">
-          <button aria-label="最小化" @click="desktop?.window.minimize()">
-            <Minus :size="14" /></button
-          ><button aria-label="最大化" @click="desktop?.window.maximize()">
-            <Maximize2 :size="13" /></button
-          ><button aria-label="关闭窗口" @click="desktop?.window.close()"><X :size="16" /></button>
-        </div>
+        <WindowControls v-if="platform === 'win32'" />
       </header>
 
       <main class="main-content" :key="page + (search ? 'search' : '')">
@@ -1197,26 +1359,71 @@ onUnmounted(() => {
         ><button class="text-button" @click="openLyricEditor">
           <Plus :size="16" />添加 / 编辑歌词
         </button>
+        <WindowControls v-if="platform === 'win32'" class="lyrics-window-controls" />
       </div>
       <div class="lyrics-body">
         <div class="lyrics-album">
-          <CoverArt :artwork="currentTrack?.artwork" />
+          <div
+            class="vinyl"
+            :class="{ 'is-spinning': player.playing }"
+            role="button"
+            tabindex="0"
+            :aria-label="player.playing ? '暂停' : '播放'"
+            :aria-pressed="player.playing"
+            @click="togglePlay"
+            @keydown.enter.prevent="togglePlay"
+            @keydown.space.prevent="togglePlay"
+          >
+            <div class="vinyl-disc">
+              <div class="vinyl-label">
+                <CoverArt :artwork="currentTrack?.artwork" :title="currentTrack?.title" />
+              </div>
+              <span class="vinyl-hole" aria-hidden="true" />
+            </div>
+            <span class="vinyl-sheen" aria-hidden="true" />
+            <span v-if="currentTrack" class="vinyl-play-hint" aria-hidden="true">
+              <Pause v-if="player.playing" :size="26" fill="currentColor" /><Play
+                v-else
+                :size="26"
+                fill="currentColor"
+              />
+            </span>
+            <div class="tonearm" aria-hidden="true">
+              <span class="tonearm-base" />
+              <span class="tonearm-arm">
+                <i class="tonearm-head" />
+              </span>
+            </div>
+          </div>
           <h2>{{ currentTrack?.title }}</h2>
           <p>{{ currentTrack?.artist }} · {{ currentTrack?.album }}</p>
-          <button
-            class="icon-button"
-            aria-label="喜欢这首歌"
-            @click="currentTrack && toggleFavorite(currentTrack.id)"
-          >
-            <Heart
-              :size="22"
-              :fill="
-                currentTrack && library.favorites.includes(currentTrack.id)
-                  ? 'currentColor'
-                  : 'none'
-              "
-            />
-          </button>
+          <div v-if="currentTrack" class="lyrics-actions">
+            <button
+              class="icon-button"
+              :class="{ active: library.favorites.includes(currentTrack.id) }"
+              aria-label="喜欢这首歌"
+              @click="toggleFavorite(currentTrack.id)"
+            >
+              <Heart
+                :size="20"
+                :fill="library.favorites.includes(currentTrack.id) ? 'currentColor' : 'none'"
+              />
+            </button>
+            <button class="icon-button" aria-label="添加到歌单" @click="addPlaylist(currentTrack)">
+              <Plus :size="20" />
+            </button>
+            <button
+              v-if="currentTrack.kind === 'network'"
+              class="icon-button"
+              :disabled="downloadingTrack === currentTrack.id"
+              aria-label="下载到本地"
+              title="下载到本地"
+              @click="downloadTrackLocally(currentTrack)"
+            >
+              <LoaderCircle v-if="downloadingTrack === currentTrack.id" :size="19" class="spin" />
+              <Download v-else :size="19" />
+            </button>
+          </div>
         </div>
         <div ref="lyricContainer" class="lyrics-lines">
           <template v-if="lyricLines.length"
@@ -1322,12 +1529,24 @@ onUnmounted(() => {
         }}</button
       ><button v-if="selectedPlaylist" @click="removePlaylistTrack(contextMenu.track)">
         <Minus :size="16" />从当前歌单移除</button
+      ><button v-if="contextMenu.track.kind === 'local'" @click="revealTrack(contextMenu.track)">
+        <FolderOpen :size="16" />打开所在文件夹</button
+      ><button
+        v-if="contextMenu.track.kind === 'network'"
+        :disabled="Boolean(downloadingTrack)"
+        @click="downloadTrackLocally(contextMenu.track)"
+      >
+        <LoaderCircle
+          v-if="downloadingTrack === contextMenu.track.id"
+          :size="15"
+          class="spin"
+        /><Download v-else :size="16" />{{ downloadingTrack ? '正在下载…' : '下载到本地' }}</button
       ><button
         v-if="contextMenu.track.kind !== 'demo'"
         class="danger"
         @click="deleteTrack(contextMenu.track)"
       >
-        <Trash2 :size="15" />从音乐库移除
+        <Trash2 :size="15" />{{ contextMenu.track.downloaded ? '删除本地文件' : '从音乐库移除' }}
       </button>
     </div>
 
@@ -1343,7 +1562,7 @@ onUnmounted(() => {
               network: '添加网络音乐',
               playlist: '创建歌单',
               'add-playlist': '添加到歌单',
-              settings: '偏好设置',
+              settings: '设置',
               update: '发现新版本',
               equalizer: '声音均衡器',
               timer: '睡眠定时',
@@ -1440,137 +1659,185 @@ onUnmounted(() => {
             </div>
           </form></template
         >
-        <div v-else-if="modal === 'settings'" class="settings-content">
-          <div class="eyebrow">MAKE YOURSELF AT HOME</div>
-          <h2>偏好设置</h2>
-          <p class="modal-subtitle">让音乐，以你喜欢的方式发生。</p>
-          <div class="settings-section">
-            <h3>聆听与外观</h3>
-            <div class="setting-row">
-              <div><strong>界面主题</strong><span>选择更适合此刻的色调</span></div>
-              <div class="segmented-control" role="group" aria-label="界面主题">
-                <button
-                  :class="{ active: preferences.theme === 'light' }"
-                  :aria-pressed="preferences.theme === 'light'"
-                  @click="preferences.theme = 'light'"
-                >
-                  浅色</button
-                ><button
-                  :class="{ active: preferences.theme === 'dark' }"
-                  :aria-pressed="preferences.theme === 'dark'"
-                  @click="preferences.theme = 'dark'"
-                >
-                  深色
-                </button>
-                <button
-                  :class="{ active: preferences.theme === 'system' }"
-                  :aria-pressed="preferences.theme === 'system'"
-                  @click="preferences.theme = 'system'"
-                >
-                  跟随系统
-                </button>
-              </div>
-            </div>
-            <div v-if="demoEnabled" class="setting-row">
-              <div><strong>显示原创试听</strong><span>6 首内置音乐，无需网络即可聆听</span></div>
+        <div v-else-if="modal === 'settings'" class="settings-layout">
+          <header class="settings-head">
+            <h2>设置</h2>
+          </header>
+          <div class="settings-columns">
+            <nav class="settings-tabs" aria-label="设置分类">
               <button
-                class="switch"
-                :class="{ on: preferences.showDemos }"
-                role="switch"
-                :aria-checked="preferences.showDemos"
-                aria-label="显示原创试听"
-                @click="preferences.showDemos = !preferences.showDemos"
+                v-for="tab in settingsTabs"
+                :key="tab.value"
+                :class="{ active: settingsTab === tab.value }"
+                :aria-current="settingsTab === tab.value ? 'true' : undefined"
+                @click="settingsTab = tab.value"
               >
-                <span />
+                <component :is="tab.icon" :size="16" /><span>{{ tab.label }}</span>
               </button>
-            </div>
-            <div class="setting-row">
-              <div>
-                <strong>睡眠定时</strong
-                ><span>{{
-                  player.sleepMinutes
-                    ? `约 ${player.sleepMinutes} 分钟后停止播放`
-                    : '让音乐陪你安心入睡'
-                }}</span>
+            </nav>
+            <div class="settings-content">
+              <div v-if="settingsTab === 'appearance'" class="settings-section">
+                <h3>外观</h3>
+                <div class="setting-row">
+                  <div><strong>界面主题</strong><span>选择更适合此刻的色调</span></div>
+                  <div class="segmented-control" role="group" aria-label="界面主题">
+                    <button
+                      :class="{ active: preferences.theme === 'light' }"
+                      :aria-pressed="preferences.theme === 'light'"
+                      @click="preferences.theme = 'light'"
+                    >
+                      浅色</button
+                    ><button
+                      :class="{ active: preferences.theme === 'dark' }"
+                      :aria-pressed="preferences.theme === 'dark'"
+                      @click="preferences.theme = 'dark'"
+                    >
+                      深色
+                    </button>
+                    <button
+                      :class="{ active: preferences.theme === 'system' }"
+                      :aria-pressed="preferences.theme === 'system'"
+                      @click="preferences.theme = 'system'"
+                    >
+                      跟随系统
+                    </button>
+                  </div>
+                </div>
+                <div v-if="demoEnabled" class="setting-row">
+                  <div>
+                    <strong>显示原创试听</strong><span>6 首内置音乐，无需网络即可聆听</span>
+                  </div>
+                  <button
+                    class="switch"
+                    :class="{ on: preferences.showDemos }"
+                    role="switch"
+                    :aria-checked="preferences.showDemos"
+                    aria-label="显示原创试听"
+                    @click="preferences.showDemos = !preferences.showDemos"
+                  >
+                    <span />
+                  </button>
+                </div>
               </div>
-              <button class="text-button" @click="openModal('timer')">
-                {{ player.sleepMinutes ? '修改定时' : '设置定时' }}<ChevronRight :size="15" />
-              </button>
-            </div>
-            <div class="setting-row">
-              <div><strong>播放速度</strong><span>按自己的节奏聆听</span></div>
-              <AppSelect
-                v-model="player.rate"
-                label="播放速度"
-                :options="[
-                  { value: 0.75, label: '0.75×' },
-                  { value: 1, label: '1.0×' },
-                  { value: 1.25, label: '1.25×' },
-                  { value: 1.5, label: '1.5×' },
-                  { value: 2, label: '2.0×' },
-                ]"
-              />
-            </div>
-          </div>
-          <div v-if="isDesktop" class="settings-section">
-            <h3>窗口与后台</h3>
-            <div class="setting-row">
-              <div>
-                <strong>关闭窗口后继续播放</strong>
-                <span>关闭后保留在后台，点击托盘图标可重新打开</span>
+              <div v-else-if="settingsTab === 'playback'" class="settings-section">
+                <h3>播放</h3>
+                <div class="setting-row">
+                  <div>
+                    <strong>睡眠定时</strong
+                    ><span>{{
+                      player.sleepMinutes
+                        ? `约 ${player.sleepMinutes} 分钟后停止播放`
+                        : '让音乐陪你安心入睡'
+                    }}</span>
+                  </div>
+                  <button class="text-button" @click="openModal('timer')">
+                    {{ player.sleepMinutes ? '修改定时' : '设置定时' }}<ChevronRight :size="15" />
+                  </button>
+                </div>
+                <div class="setting-row">
+                  <div><strong>播放速度</strong><span>按自己的节奏聆听</span></div>
+                  <AppSelect
+                    v-model="player.rate"
+                    label="播放速度"
+                    :options="[
+                      { value: 0.75, label: '0.75×' },
+                      { value: 1, label: '1.0×' },
+                      { value: 1.25, label: '1.25×' },
+                      { value: 1.5, label: '1.5×' },
+                      { value: 2, label: '2.0×' },
+                    ]"
+                  />
+                </div>
               </div>
-              <button
-                class="button"
-                @click="
-                  desktop?.window.close();
-                  closeModal();
-                "
-              >
-                转入后台
-              </button>
-            </div>
-            <div class="setting-row">
-              <div><strong>退出 Abner Music</strong><span>停止播放并彻底退出应用</span></div>
-              <button class="button" @click="desktop?.app.quit()">退出应用</button>
-            </div>
-          </div>
-          <div class="settings-section">
-            <h3>
-              关于 Abner Music <small>v{{ version }}</small>
-            </h3>
-            <div class="setting-row update-setting">
-              <div>
-                <strong>{{
-                  update.release ? `发现 v${update.release.version}` : '保持新鲜，继续聆听'
-                }}</strong
-                ><span role="status">{{ update.message }}</span>
+              <div v-else-if="settingsTab === 'storage'" class="settings-section">
+                <h3>存储</h3>
+                <div class="setting-row">
+                  <div>
+                    <strong>下载保存位置</strong>
+                    <span>「下载到本地」的歌曲存放在这里，歌词会保存为同名 .lrc 文件</span>
+                  </div>
+                  <button class="text-button" @click="openStorageFolder">
+                    打开文件夹<ChevronRight :size="15" />
+                  </button>
+                </div>
+                <div class="storage-path">
+                  <code :title="storage?.directory">{{ storage?.directory || '读取中…' }}</code
+                  ><span v-if="storage" class="storage-tag">{{
+                    storage.isDefault ? '默认位置' : '自定义位置'
+                  }}</span>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <strong>更换保存位置</strong>
+                    <span>只影响之后的下载，已经下载的歌曲不会移动</span>
+                  </div>
+                  <button class="button" @click="changeStorage">选择文件夹</button>
+                </div>
+                <p class="storage-hint">
+                  手动导入的音乐不会被复制或移动，仍留在你原本的文件夹里；想找到某首歌的文件，可以在歌曲列表右键「打开所在文件夹」。
+                </p>
               </div>
-              <button v-if="update.release" class="button" @click="openModal('update')">
-                查看更新</button
-              ><button
-                v-else
-                class="button"
-                :disabled="!isDesktop || update.state === 'checking'"
-                @click="checkUpdate"
-              >
-                {{ update.state === 'checking' ? '检查中…' : '检查更新' }}
-              </button>
+              <div v-else-if="settingsTab === 'window'" class="settings-section">
+                <h3>窗口与后台</h3>
+                <div class="setting-row">
+                  <div>
+                    <strong>关闭窗口后继续播放</strong>
+                    <span>关闭后保留在后台，点击托盘图标可重新打开</span>
+                  </div>
+                  <button
+                    class="button"
+                    @click="
+                      desktop?.window.close();
+                      closeModal();
+                    "
+                  >
+                    转入后台
+                  </button>
+                </div>
+                <div class="setting-row">
+                  <div><strong>退出 Abner Music</strong><span>停止播放并彻底退出应用</span></div>
+                  <button class="button" @click="desktop?.app.quit()">退出应用</button>
+                </div>
+              </div>
+              <div v-else class="settings-section">
+                <h3>
+                  关于 Abner Music <small>v{{ version }}</small>
+                </h3>
+                <div class="setting-row update-setting">
+                  <div>
+                    <strong>{{
+                      update.release ? `发现 v${update.release.version}` : '保持新鲜，继续聆听'
+                    }}</strong
+                    ><span role="status">{{ update.message }}</span>
+                  </div>
+                  <button v-if="update.release" class="button" @click="openModal('update')">
+                    查看更新</button
+                  ><button
+                    v-else
+                    class="button"
+                    :disabled="!isDesktop || update.state === 'checking'"
+                    @click="checkUpdate"
+                  >
+                    {{ update.state === 'checking' ? '检查中…' : '检查更新' }}
+                  </button>
+                </div>
+                <div class="setting-stats">
+                  <span><Folder :size="14" />{{ localCount }} 首本地音乐</span
+                  ><span><Heart :size="14" />{{ library.favorites.length }} 首心动收藏</span>
+                </div>
+                <div class="keyboard-hints">
+                  <span>空格 <kbd>播放 / 暂停</kbd></span
+                  ><span>← / → <kbd>快退 / 快进 5 秒</kbd></span
+                  ><span>Alt + ← / → <kbd>切歌</kbd></span
+                  ><span>Ctrl / ⌘ + F <kbd>搜索</kbd></span>
+                </div>
+                <div class="settings-footer">
+                  <AudioLines :size="17" />音乐，自在发生。<span
+                    >github.com/abner-forever/abner-music</span
+                  >
+                </div>
+              </div>
             </div>
-            <div class="setting-stats">
-              <span><Folder :size="14" />{{ localCount }} 首本地音乐</span
-              ><span><Heart :size="14" />{{ library.favorites.length }} 首心动收藏</span>
-            </div>
-          </div>
-          <div class="keyboard-hints">
-            <span>空格 <kbd>播放 / 暂停</kbd></span
-            ><span>← / → <kbd>快退 / 快进 5 秒</kbd></span
-            ><span>Alt + ← / → <kbd>切歌</kbd></span
-            ><span>Ctrl / ⌘ + F <kbd>搜索</kbd></span>
-          </div>
-          <div class="settings-footer">
-            <AudioLines :size="17" />音乐，自在发生。<span
-              >github.com/abner-forever/abner-music</span
-            >
           </div>
         </div>
         <template v-else-if="modal === 'update' && update.release">

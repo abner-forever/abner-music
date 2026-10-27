@@ -10,3 +10,4 @@ dist/
 test-results/
 playwright-report/
 build/icon.iconset/
+.workbuddy/

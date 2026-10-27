@@ -21,9 +21,17 @@ import { pipeline } from 'node:stream/promises';
 import { serveMedia } from './desktop/media';
 import { createUpdateController } from './desktop/updates';
 import { createGdMusicController } from './desktop/gd-music';
-import { downloadFileInfo } from './desktop/download';
+import { downloadFileInfo, uniqueFileName } from './desktop/download';
 import { releasePageUrl } from './shared/updates';
-import type { AudioDownloadRequest, Track, UpdateStatus } from './shared/types';
+import type {
+  AudioDownloadRequest,
+  GdMusicReference,
+  LibraryDownloadRequest,
+  LibraryRemoveResult,
+  LibraryStorageInfo,
+  Track,
+  UpdateStatus,
+} from './shared/types';
 
 if (squirrelStartup) app.quit();
 app.setName('Abner Music');
@@ -54,7 +62,7 @@ let fullBounds: Electron.Rectangle | undefined;
 let importing = false;
 let updateController: ReturnType<typeof createUpdateController> | undefined;
 let musicController: ReturnType<typeof createGdMusicController> | undefined;
-let records: Array<{ track: Track; file: string }> = [];
+let records: Array<{ track: Track; file: string; managed?: string }> = [];
 const extensions = new Set([
   '.mp3',
   '.wav',
@@ -67,6 +75,39 @@ const extensions = new Set([
   '.aif',
 ]);
 const catalogPath = () => path.join(app.getPath('userData'), 'library.json');
+const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
+const defaultDownloadsDirectory = () => path.join(app.getPath('userData'), 'downloads');
+let appSettings: { downloadDirectory?: string } = {};
+const downloadsDirectory = () => appSettings.downloadDirectory || defaultDownloadsDirectory();
+
+async function loadSettings() {
+  try {
+    const parsed = JSON.parse(await readFile(settingsPath(), 'utf8')) as {
+      downloadDirectory?: unknown;
+    };
+    appSettings =
+      typeof parsed?.downloadDirectory === 'string' && parsed.downloadDirectory
+        ? { downloadDirectory: path.resolve(parsed.downloadDirectory) }
+        : {};
+  } catch {
+    appSettings = {};
+  }
+}
+
+async function saveSettings() {
+  const snapshot = JSON.stringify(appSettings);
+  await mkdir(app.getPath('userData'), { recursive: true });
+  await writeFile(`${settingsPath()}.tmp`, snapshot, 'utf8');
+  await rename(`${settingsPath()}.tmp`, settingsPath());
+}
+
+function storageInfo(): LibraryStorageInfo {
+  return {
+    directory: downloadsDirectory(),
+    defaultDirectory: defaultDownloadsDirectory(),
+    isDefault: !appSettings.downloadDirectory,
+  };
+}
 const appIcon = app.isPackaged
   ? path.join(process.resourcesPath, 'icon.png')
   : path.join(app.getAppPath(), 'build/icon.png');
@@ -196,6 +237,78 @@ function validateDownloadRequest(value: unknown): AudioDownloadRequest {
   };
 }
 
+const downloadLyricsPath = (file: string) => file.slice(0, -path.extname(file).length) + '.lrc';
+
+async function saveRemoteAudio(url: string, destination: string) {
+  const temporary = destination + '.' + randomUUID() + '.download';
+  try {
+    const response = await net.fetch(url, {
+      headers: { Accept: 'audio/*,application/octet-stream;q=0.9,*/*;q=0.5' },
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!response.ok || !response.body) throw new Error('音乐源返回 ' + response.status);
+    const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+    if (contentType.startsWith('text/')) throw new Error('音乐源没有返回音频文件');
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > maxDownloadBytes) throw new Error('音频文件超过 500 MB');
+    await pipeline(
+      Readable.fromWeb(response.body as import('node:stream/web').ReadableStream<Uint8Array>),
+      createWriteStream(temporary, { flags: 'wx' }),
+    );
+    try {
+      await rename(temporary, destination);
+    } catch (error) {
+      if (!['EEXIST', 'EPERM'].includes((error as NodeJS.ErrnoException).code || '')) throw error;
+      await unlink(destination);
+      await rename(temporary, destination);
+    }
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined);
+    if (error instanceof Error && error.name === 'TimeoutError')
+      throw new Error('下载超时，请稍后重试');
+    throw error instanceof Error ? error : new Error('下载失败');
+  }
+}
+
+async function fetchRemoteLyrics(remote?: GdMusicReference) {
+  if (!remote || !musicController) return '';
+  try {
+    const lyrics = await musicController.client.lyrics(remote);
+    return (lyrics.lyric || '').trim().slice(0, 200_000);
+  } catch {
+    return '';
+  }
+}
+
+async function saveRemoteLyrics(file: string, remote?: GdMusicReference) {
+  const lyrics = await fetchRemoteLyrics(remote);
+  if (!lyrics) return '';
+  const target = downloadLyricsPath(file);
+  try {
+    await writeFile(target, lyrics, 'utf8');
+    return target;
+  } catch {
+    return '';
+  }
+}
+
+async function fetchRemoteArtwork(remote?: GdMusicReference) {
+  if (!remote || !musicController) return '';
+  try {
+    const url = await musicController.client.picture(remote);
+    if (!url) return '';
+    const response = await net.fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) return '';
+    const type = (response.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+    if (!type.startsWith('image/')) return '';
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > 1_500_000) return '';
+    return `data:${type};base64,${buffer.toString('base64')}`;
+  } catch {
+    return '';
+  }
+}
+
 async function downloadRemoteAudio(value: unknown) {
   if (!mainWindow || !musicController) throw new Error('下载服务尚未就绪');
   const request = validateDownloadRequest(value);
@@ -221,35 +334,132 @@ async function downloadRemoteAudio(value: unknown) {
   const destination = path.extname(selected.filePath)
     ? selected.filePath
     : selected.filePath + '.' + file.extension;
-  const temporary = destination + '.' + randomUUID() + '.download';
-  try {
-    const response = await net.fetch(resolution.url, {
-      headers: { Accept: 'audio/*,application/octet-stream;q=0.9,*/*;q=0.5' },
-      signal: AbortSignal.timeout(120_000),
+  await saveRemoteAudio(resolution.url, destination);
+  const lyricsFile = await saveRemoteLyrics(destination, request.remote);
+  return {
+    saved: true,
+    fileName: path.basename(destination),
+    lyricsSaved: Boolean(lyricsFile),
+  };
+}
+
+function validateLibraryDownload(value: unknown): LibraryDownloadRequest {
+  if (!value || typeof value !== 'object') throw new Error('下载参数无效');
+  const input = value as Partial<LibraryDownloadRequest>;
+  const text = (item: unknown, limit = 240) =>
+    typeof item === 'string' ? item.trim().slice(0, limit) : '';
+  const remote =
+    input.remote && typeof input.remote === 'object' && input.remote.provider === 'gd'
+      ? {
+          provider: 'gd' as const,
+          platform: input.remote.platform,
+          trackId: text(input.remote.trackId, 200),
+          pictureId: input.remote.pictureId ? text(input.remote.pictureId, 200) : undefined,
+          lyricId: input.remote.lyricId ? text(input.remote.lyricId, 200) : undefined,
+        }
+      : undefined;
+  const url = text(input.url, 2_000);
+  if (
+    (remote && (!['netease', 'joox', 'bilibili'].includes(remote.platform) || !remote.trackId)) ||
+    (!remote && !/^https?:\/\//i.test(url)) ||
+    ![128, 192, 320, 740, 999].includes(Number(input.quality)) ||
+    !text(input.suggestedName) ||
+    typeof input.format !== 'string' ||
+    input.format.length > 20
+  )
+    throw new Error('下载参数无效');
+  const request: LibraryDownloadRequest = {
+    quality: input.quality as LibraryDownloadRequest['quality'],
+    suggestedName: text(input.suggestedName) || '在线音乐',
+    format: input.format.trim(),
+    title: text(input.title, 200),
+    artist: text(input.artist, 200),
+    album: text(input.album, 200),
+  };
+  if (remote) request.remote = remote;
+  else request.url = url;
+  return request;
+}
+
+async function downloadRemoteToLibrary(value: unknown) {
+  const request = validateLibraryDownload(value);
+  let url = request.url || '';
+  if (request.remote) {
+    if (!musicController) throw new Error('下载服务尚未就绪');
+    const resolution = await musicController.client.resolve({
+      remote: request.remote,
+      quality: request.quality,
+      refresh: true,
     });
-    if (!response.ok || !response.body) throw new Error('音乐源返回 ' + response.status);
-    const contentType = response.headers.get('content-type')?.toLowerCase() || '';
-    if (contentType.startsWith('text/')) throw new Error('音乐源没有返回音频文件');
-    const contentLength = Number(response.headers.get('content-length') || 0);
-    if (contentLength > maxDownloadBytes) throw new Error('音频文件超过 500 MB');
-    await pipeline(
-      Readable.fromWeb(response.body as import('node:stream/web').ReadableStream<Uint8Array>),
-      createWriteStream(temporary, { flags: 'wx' }),
-    );
-    try {
-      await rename(temporary, destination);
-    } catch (error) {
-      if (!['EEXIST', 'EPERM'].includes((error as NodeJS.ErrnoException).code || '')) throw error;
-      await unlink(destination);
-      await rename(temporary, destination);
-    }
-    return { saved: true, fileName: path.basename(destination) };
-  } catch (error) {
-    await unlink(temporary).catch(() => undefined);
-    if (error instanceof Error && error.name === 'TimeoutError')
-      throw new Error('下载超时，请稍后重试');
-    throw error instanceof Error ? error : new Error('下载失败');
+    url = resolution.url;
   }
+  const source = new URL(url);
+  if (!['http:', 'https:'].includes(source.protocol) || source.username || source.password)
+    throw new Error('下载地址无效');
+  const directory = downloadsDirectory();
+  await mkdir(directory, { recursive: true });
+  const info = downloadFileInfo(request, url);
+  const fileName = uniqueFileName(info.fileName, (name) => existsSync(path.join(directory, name)));
+  const destination = path.join(directory, fileName);
+  await saveRemoteAudio(url, destination);
+  let lyrics = '';
+  if (request.remote) {
+    lyrics = await fetchRemoteLyrics(request.remote);
+    if (lyrics)
+      await writeFile(downloadLyricsPath(destination), lyrics, 'utf8').catch(() => undefined);
+  }
+  const artwork = (await fetchRemoteArtwork(request.remote)) || 'forest';
+  let duration = 0;
+  try {
+    const metadata = await parseFile(destination, { skipCovers: true, duration: true });
+    duration = metadata.format.duration || 0;
+  } catch {
+    duration = 0;
+  }
+  const id = randomUUID();
+  const track: Track = {
+    id,
+    title: (request.title || '').trim() || path.basename(fileName, path.extname(fileName)),
+    artist: (request.artist || '').trim() || '未知艺术家',
+    album: (request.album || '').trim() || '本地音乐',
+    duration,
+    source: `abner-media://track/${id}`,
+    kind: 'local',
+    artwork,
+    format: info.extension.toUpperCase(),
+    addedAt: Date.now(),
+    downloaded: true,
+    ...(lyrics ? { lyrics } : {}),
+  };
+  records.push({ track, file: destination, managed: directory });
+  await saveCatalog();
+  return track;
+}
+
+async function removeLibraryTrack(id: unknown): Promise<LibraryRemoveResult> {
+  if (typeof id !== 'string') throw new Error('曲目 ID 无效');
+  const record = records.find((item) => item.track.id === id);
+  records = records.filter((item) => item.track.id !== id);
+  let fileDeleted = false;
+  if (record) {
+    const roots = [record.managed, downloadsDirectory(), defaultDownloadsDirectory()].filter(
+      (root): root is string => typeof root === 'string' && root.length > 0,
+    );
+    const file = path.resolve(record.file);
+    // 只清理应用自己下载下来的文件，用户手动导入的音乐保持原样。
+    const managed = record.track.downloaded === true || Boolean(record.managed);
+    const insideDownloads = roots.some((root) => {
+      const relative = path.relative(path.resolve(root), file);
+      return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+    });
+    if (managed && insideDownloads) {
+      await unlink(file).catch(() => undefined);
+      await unlink(downloadLyricsPath(file)).catch(() => undefined);
+      fileDeleted = !existsSync(file);
+    }
+  }
+  await saveCatalog();
+  return { fileDeleted };
 }
 
 function configureUpdates() {
@@ -317,6 +527,13 @@ function createWindow() {
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  const sendMaximized = () => {
+    if (!mainWindow) return;
+    mainWindow.webContents.send('window:maximized', mainWindow.isMaximized());
+  };
+  mainWindow.on('maximize', sendMaximized);
+  mainWindow.on('unmaximize', sendMaximized);
+  mainWindow.webContents.on('did-finish-load', sendMaximized);
   mainWindow.on('close', (event) => {
     if (quitting) return;
     event.preventDefault();
@@ -343,6 +560,7 @@ if (!squirrelStartup && app.requestSingleInstanceLock()) {
     } catch {
       records = [];
     }
+    await loadSettings();
     protocol.handle('abner-media', async (request) => {
       const parsed = new URL(request.url);
       const record =
@@ -379,8 +597,45 @@ if (!squirrelStartup && app.requestSingleInstanceLock()) {
     });
     ipcMain.handle('library:remove', async (event, id: unknown) => {
       trusted(event);
-      records = records.filter((record) => record.track.id !== id);
-      await saveCatalog();
+      return removeLibraryTrack(id);
+    });
+    ipcMain.handle('library:download', (event, input: unknown) => {
+      trusted(event);
+      return downloadRemoteToLibrary(input);
+    });
+    ipcMain.handle('library:storage', (event) => {
+      trusted(event);
+      return storageInfo();
+    });
+    ipcMain.handle('library:storage:choose', async (event) => {
+      trusted(event);
+      if (!mainWindow) throw new Error('窗口尚未就绪');
+      const selected = await dialog.showOpenDialog(mainWindow, {
+        title: '选择下载保存位置',
+        defaultPath: downloadsDirectory(),
+        buttonLabel: '使用此文件夹',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (selected.canceled || !selected.filePaths[0]) return storageInfo();
+      const directory = path.resolve(selected.filePaths[0]);
+      appSettings = { ...appSettings, downloadDirectory: directory };
+      await saveSettings();
+      await mkdir(directory, { recursive: true }).catch(() => undefined);
+      return storageInfo();
+    });
+    ipcMain.handle('library:storage:open', async (event) => {
+      trusted(event);
+      const directory = downloadsDirectory();
+      await mkdir(directory, { recursive: true }).catch(() => undefined);
+      const failure = await shell.openPath(directory);
+      if (failure) throw new Error(failure);
+    });
+    ipcMain.handle('library:reveal', (event, id: unknown) => {
+      trusted(event);
+      if (typeof id !== 'string') throw new Error('曲目 ID 无效');
+      const record = records.find((item) => item.track.id === id);
+      if (!record || !existsSync(record.file)) throw new Error('找不到这首歌的文件了');
+      shell.showItemInFolder(record.file);
     });
     ipcMain.handle('app:version', (event) => {
       trusted(event);
@@ -403,6 +658,10 @@ if (!squirrelStartup && app.requestSingleInstanceLock()) {
         } else mainWindow?.[action]();
       });
     }
+    ipcMain.handle('window:is-maximized', (event) => {
+      trusted(event);
+      return Boolean(mainWindow?.isMaximized());
+    });
     ipcMain.on('window:mini', (event, enabled: unknown) => {
       trusted(event);
       if (!mainWindow || typeof enabled !== 'boolean') return;

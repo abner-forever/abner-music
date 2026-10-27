@@ -179,6 +179,7 @@ test('queue, equalizer, sleep timer and responsive layout work', async ({ page }
   await expect(page.getByRole('button', { name: '爵士', exact: true })).toHaveClass(/active/);
   await page.getByRole('button', { name: '完成', exact: true }).click();
   await page.getByRole('button', { name: /设置 v/ }).click();
+  await page.locator('.settings-tabs').getByRole('button', { name: '播放' }).click();
   await page.getByRole('button', { name: '设置定时', exact: true }).click();
   await page.getByRole('button', { name: '30 分钟', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('30 分钟');

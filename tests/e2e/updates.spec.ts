@@ -21,9 +21,23 @@ test('update check opens release notes and download uses the desktop bridge', as
       library: {
         list: async () => [],
         importFiles: async () => ({ tracks: [], skipped: 0 }),
-        remove: async () => {},
+        remove: async () => ({ fileDeleted: false }),
+        download: async () => {
+          throw new Error('not available in this test');
+        },
+        storage: async () => ({ directory: '', defaultDirectory: '', isDefault: true }),
+        chooseStorage: async () => ({ directory: '', defaultDirectory: '', isDefault: true }),
+        openStorage: async () => {},
+        reveal: async () => {},
       },
-      window: { minimize() {}, maximize() {}, close() {}, mini() {} },
+      window: {
+        minimize() {},
+        maximize() {},
+        close() {},
+        mini() {},
+        isMaximized: async () => false,
+        onMaximized: () => () => {},
+      },
       app: {
         quit() {},
         version: async () => '0.1.0-beta.1',
@@ -38,6 +52,7 @@ test('update check opens release notes and download uses the desktop bridge', as
   });
   await page.goto('/');
   await page.getByRole('button', { name: /设置 v/ }).click();
+  await page.locator('.settings-tabs').getByRole('button', { name: '关于' }).click();
   await page.getByRole('button', { name: '检查更新', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '发现新版本' });
   await expect(dialog).toBeVisible();
@@ -51,7 +66,7 @@ test('update check opens release notes and download uses the desktop bridge', as
     /releases\/tag\/v0\.1\.0-beta\.2$/,
   );
   await page.getByRole('button', { name: '稍后再说' }).click();
-  await expect(page.getByRole('dialog', { name: '偏好设置' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible();
   await page.getByRole('button', { name: '查看更新', exact: true }).click();
   await expect(dialog).toBeVisible();
 });

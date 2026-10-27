@@ -17,12 +17,24 @@ const bridge: DesktopBridge = {
     list: () => ipcRenderer.invoke('library:list'),
     importFiles: (folder = false) => ipcRenderer.invoke('library:import', folder),
     remove: (id) => ipcRenderer.invoke('library:remove', id),
+    download: (input) => ipcRenderer.invoke('library:download', input),
+    storage: () => ipcRenderer.invoke('library:storage'),
+    chooseStorage: () => ipcRenderer.invoke('library:storage:choose'),
+    openStorage: () => ipcRenderer.invoke('library:storage:open'),
+    reveal: (id) => ipcRenderer.invoke('library:reveal', id),
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
     maximize: () => ipcRenderer.send('window:maximize'),
     close: () => ipcRenderer.send('window:close'),
     mini: (enabled) => ipcRenderer.send('window:mini', enabled),
+    isMaximized: () => ipcRenderer.invoke('window:is-maximized'),
+    onMaximized: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, maximized: boolean) =>
+        callback(maximized);
+      ipcRenderer.on('window:maximized', listener);
+      return () => ipcRenderer.removeListener('window:maximized', listener);
+    },
   },
   app: {
     quit: () => ipcRenderer.send('app:quit'),

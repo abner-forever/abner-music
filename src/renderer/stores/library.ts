@@ -1,5 +1,5 @@
 import { computed, reactive, watch } from 'vue';
-import type { Playlist, Track } from '../../shared/types';
+import type { LibraryDownloadRequest, Playlist, Track } from '../../shared/types';
 import { demoTracks, validateAudioUrl } from '../lib/music';
 import { deleteFile, readState, storeFile } from '../lib/storage';
 import { gdTrackId } from '../../shared/gd-music';
@@ -180,10 +180,14 @@ export function createPlaylist(name: string) {
 
 export async function removeTrack(id: string) {
   const track = library.tracks.find((item) => item.id === id);
-  if (!track || track.kind === 'demo') return;
+  if (!track || track.kind === 'demo') return { fileDeleted: false };
+  let fileDeleted = false;
   if (track.kind === 'local') {
-    if (window.desktop) await window.desktop.library.remove(id);
-    else await deleteFile(id);
+    if (window.desktop) fileDeleted = (await window.desktop.library.remove(id)).fileDeleted;
+    else {
+      await deleteFile(id);
+      fileDeleted = true;
+    }
   }
   library.tracks = library.tracks.filter((item) => item.id !== id);
   library.favorites = library.favorites.filter((favorite) => favorite !== id);
@@ -191,4 +195,44 @@ export async function removeTrack(id: string) {
   for (const playlist of library.playlists)
     playlist.trackIds = playlist.trackIds.filter((trackId) => trackId !== id);
   delete library.lyrics[id];
+  return { fileDeleted };
+}
+
+/** 用下载好的本地曲目原位替换在线曲目，喜欢、歌单、播放历史一并继承。 */
+function inheritTrack(previousId: string, next: Track) {
+  const index = library.tracks.findIndex((item) => item.id === previousId);
+  if (index >= 0) library.tracks.splice(index, 1, next);
+  else library.tracks.push(next);
+  library.favorites = [
+    ...new Set(library.favorites.map((id) => (id === previousId ? next.id : id))),
+  ];
+  library.history = [...new Set(library.history.map((id) => (id === previousId ? next.id : id)))];
+  for (const playlist of library.playlists)
+    playlist.trackIds = [
+      ...new Set(playlist.trackIds.map((id) => (id === previousId ? next.id : id))),
+    ];
+  if (library.lyrics[previousId]) {
+    library.lyrics[next.id] = library.lyrics[previousId];
+    delete library.lyrics[previousId];
+  }
+}
+
+/** 把在线歌曲下载进本地音乐库（含歌词），成功后替换原在线曲目。 */
+export async function downloadToLibrary(track: Track) {
+  if (!window.desktop) throw new Error('下载到本地需要在桌面应用中操作');
+  if (!track.remote && !/^https?:\/\//i.test(track.source))
+    throw new Error('这首歌没有可下载的地址');
+  const request: LibraryDownloadRequest = {
+    quality: 320,
+    suggestedName: `${track.artist} - ${track.title}`,
+    format: track.format,
+    title: track.title,
+    artist: track.artist,
+    album: track.album === '网络音乐' ? '' : track.album,
+  };
+  if (track.remote) request.remote = { ...track.remote };
+  else request.url = track.source;
+  const downloaded = await window.desktop.library.download(request);
+  inheritTrack(track.id, downloaded);
+  return downloaded;
 }
