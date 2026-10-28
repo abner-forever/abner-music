@@ -2740,8 +2740,9 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 43px 22px 16px;
-  gap: 14px;
+  padding: 36px 12px 10px;
+  gap: 8px;
+  flex-wrap: nowrap;
   -webkit-app-region: drag;
   border: 0;
 }
@@ -2751,8 +2752,8 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   flex: none;
 }
 .is-mini .player-cover {
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
 }
 .is-mini .player-song-copy {
   flex: 1;
@@ -2762,9 +2763,36 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 }
 .is-mini .player-center {
   width: 100%;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.is-mini .timeline {
+  flex: 1;
+  min-width: 0;
+  gap: 5px;
+}
+.is-mini .timeline > span {
+  font-size: 9px;
+  min-width: 25px;
+}
+.is-mini .transport-controls > .mode-button {
+  display: none;
+}
+.is-mini .transport-controls .skip-button {
+  width: 24px;
+}
+.is-mini .player-song-copy strong {
+  font-size: 13px;
+}
+.is-mini .player-song-copy > span {
+  font-size: 11px;
 }
 .is-mini .transport-controls {
-  gap: 30px;
+  gap: 10px;
+  margin: 0;
 }
 .is-mini .play-toggle {
   height: 30px;

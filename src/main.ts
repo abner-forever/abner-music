@@ -53,6 +53,7 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let menuBarWidth = 0;
 let quitting = false;
 let updateStatus: UpdateStatus = {
   state: 'idle',
@@ -484,25 +485,38 @@ function createTray() {
   const size = process.platform === 'darwin' ? 18 : 16;
   tray = new Tray(nativeImage.createFromPath(appIcon).resize({ width: size, height: size }));
   tray.setToolTip('Abner Music');
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: '打开 Abner Music', click: showWindow },
-      { type: 'separator' },
-      {
-        label: '播放 / 暂停',
-        click: () => mainWindow?.webContents.send('player:media-key', 'toggle'),
-      },
-      { label: '下一首', click: () => mainWindow?.webContents.send('player:media-key', 'next') },
-      {
-        label: '上一首',
-        click: () => mainWindow?.webContents.send('player:media-key', 'previous'),
-      },
-      { type: 'separator' },
-      { label: '退出 Abner Music', click: () => app.quit() },
-    ]),
-  );
-  tray.on('click', showWindow);
-  tray.on('double-click', showWindow);
+  const trayMenu = Menu.buildFromTemplate([
+    { label: '打开 Abner Music', click: showWindow },
+    { type: 'separator' },
+    {
+      label: '播放 / 暂停',
+      click: () => mainWindow?.webContents.send('player:media-key', 'toggle'),
+    },
+    { label: '下一首', click: () => mainWindow?.webContents.send('player:media-key', 'next') },
+    {
+      label: '上一首',
+      click: () => mainWindow?.webContents.send('player:media-key', 'previous'),
+    },
+    { type: 'separator' },
+    { label: '退出 Abner Music', click: () => app.quit() },
+  ]);
+  if (process.platform === 'darwin') {
+    tray.setIgnoreDoubleClickEvents(true);
+    tray.on('right-click', () => tray?.popUpContextMenu(trayMenu));
+    tray.on('click', (_event, bounds, position) => {
+      // macOS supplies locationInWindow.x, not a global screen coordinate.
+      const x = position.x - (bounds.width - menuBarWidth) / 2;
+      const controls = menuBarWidth - 110;
+      const index = Math.floor((x - controls) / 28);
+      if (menuBarWidth && x >= controls && index >= 0 && index < 3) {
+        mainWindow?.webContents.send('player:media-key', ['previous', 'toggle', 'next'][index]);
+      } else if (menuBarWidth && x >= controls + 84 && x < menuBarWidth) showWindow();
+    });
+  } else {
+    tray.setContextMenu(trayMenu);
+    tray.on('click', showWindow);
+    tray.on('double-click', showWindow);
+  }
 }
 
 function createWindow() {
@@ -662,16 +676,44 @@ if (!squirrelStartup && app.requestSingleInstanceLock()) {
       trusted(event);
       return Boolean(mainWindow?.isMaximized());
     });
+    ipcMain.on('player:menu-bar-lyrics', (event, value: unknown) => {
+      trusted(event);
+      if (process.platform !== 'darwin' || !value || typeof value !== 'object') return;
+      const state = value as { image?: unknown; width?: unknown; lyric?: unknown };
+      if (
+        typeof state.image !== 'string' ||
+        state.image.length > 100000 ||
+        !state.image.startsWith('data:image/png;base64,') ||
+        typeof state.width !== 'number' ||
+        !Number.isInteger(state.width) ||
+        state.width < 110 ||
+        state.width > 342 ||
+        typeof state.lyric !== 'string'
+      )
+        return;
+      const image = nativeImage.createEmpty();
+      image.addRepresentation({ dataURL: state.image, scaleFactor: 2 });
+      if (image.isEmpty() || image.getSize().width !== state.width || image.getSize().height !== 22)
+        return;
+      image.setTemplateImage(true);
+      menuBarWidth = state.width;
+      tray?.setImage(image);
+      tray?.setToolTip(
+        `Abner Music · 上一首 / 播放或暂停 / 下一首${state.lyric ? ' · ' + state.lyric.slice(0, 500) : ''}`,
+      );
+    });
     ipcMain.on('window:mini', (event, enabled: unknown) => {
       trusted(event);
       if (!mainWindow || typeof enabled !== 'boolean') return;
       if (enabled) {
         fullBounds = mainWindow.getBounds();
-        mainWindow.setMinimumSize(400, 180);
-        mainWindow.setSize(430, 208);
+        mainWindow.setMinimumSize(340, 148);
+        mainWindow.setSize(360, 156);
+        if (process.platform === 'darwin') mainWindow.setWindowButtonPosition({ x: 12, y: 10 });
         mainWindow.setAlwaysOnTop(true);
       } else {
         mainWindow.setAlwaysOnTop(false);
+        if (process.platform === 'darwin') mainWindow.setWindowButtonPosition({ x: 22, y: 23 });
         if (fullBounds) mainWindow.setBounds(fullBounds);
         mainWindow.setMinimumSize(1000, 720);
       }
