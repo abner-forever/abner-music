@@ -1,7 +1,7 @@
 import { _electron as electron, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,6 +22,7 @@ const loader = path.join(
   'lib/server/electron/loader.js',
 );
 const directory = await mkdtemp(path.join(os.tmpdir(), 'abner-music-smoke-'));
+await mkdir('test-results', { recursive: true });
 const fixture = path.join(directory, 'desktop-fixture.wav');
 const userData = path.join(directory, 'profile');
 const sampleRate = 22050;
