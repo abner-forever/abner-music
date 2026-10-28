@@ -101,6 +101,44 @@ async function fixtures(
     }
   });
   await page.route('https://artwork.example/**', (route) => route.fulfill({ status: 404 }));
+  // 酷我走自家接口，单独 mock，避免用例访问真实网络
+  const kuwoRequests: string[] = [];
+  await page.route('https://search.kuwo.cn/r.s?*', async (route) => {
+    kuwoRequests.push(route.request().url());
+    await route.fulfill({
+      json: {
+        abslist: [
+          {
+            DC_TARGETID: '900001',
+            SONGNAME: '酷我晚风',
+            ARTIST: '酷我歌手',
+            ALBUM: '酷我夜色',
+            DURATION: '180',
+            web_albumpic_short: '',
+          },
+        ],
+      },
+    });
+  });
+  await page.route('https://antiserver.kuwo.cn/anti.s?*', async (route) => {
+    kuwoRequests.push(route.request().url());
+    await route.fulfill({
+      body: 'http://127.0.0.1:5173/gd-sample.wav?v=kuwo',
+      contentType: 'text/plain',
+    });
+  });
+  await page.route('https://m.kuwo.cn/newh5/singles/songinfoandlrc?*', (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          lrclist: [
+            { lineLyric: '酷我歌词第一句', time: '0.0' },
+            { lineLyric: '酷我歌词第二句', time: '6.5' },
+          ],
+        },
+      },
+    }),
+  );
   await page.route('**/gd-broken.wav?*', (route) => route.fulfill({ status: 404 }));
   await page.route('**/gd-sample.wav?*', (route) => {
     const range = route
@@ -122,6 +160,7 @@ async function fixtures(
   });
   return {
     requests,
+    kuwoRequests,
     release,
     get resolutions() {
       return resolutions;
@@ -181,6 +220,24 @@ test('online search saves only selected tracks, plays, seeks and restores stable
   await expect(page.locator('.player-error')).toHaveCount(0);
 });
 
+test('kuwo source searches, plays and loads lyrics through its own endpoints', async ({ page }) => {
+  const fixture = await fixtures(page);
+  await openSearch(page);
+  await page.getByRole('combobox', { name: '音乐平台' }).click();
+  await page.getByRole('option', { name: '酷我音乐', exact: true }).click();
+  await page.getByRole('button', { name: '搜索在线音乐', exact: true }).click();
+  await expect(page.locator('.online-track')).toHaveCount(1);
+  await expect(page.locator('.online-track')).toContainText('酷我晚风');
+  expect(fixture.kuwoRequests[0]).toContain('search.kuwo.cn');
+  await page.getByRole('button', { name: '在线播放 酷我晚风', exact: true }).click();
+  await expect(page.locator('.play-toggle')).toHaveAttribute('aria-label', '暂停');
+  await expect(page.locator('.player-error')).toHaveCount(0);
+  expect(fixture.kuwoRequests.some((url) => url.includes('antiserver.kuwo.cn'))).toBeTruthy();
+  await page.getByRole('button', { name: '歌词', exact: true }).click();
+  await expect(page.locator('.lyrics-lines button')).toHaveCount(2);
+  await expect(page.locator('.lyrics-lines')).toContainText('酷我歌词第一句');
+});
+
 test('cancelled resolution cannot overwrite a newer song and unavailable media remains retryable', async ({
   page,
 }) => {
@@ -196,9 +253,10 @@ test('cancelled resolution cannot overwrite a newer song and unavailable media r
   await page.getByRole('button', { name: '在线播放 暂不可用', exact: true }).click();
   await expect(page.locator('.player-error')).toContainText('暂不可用');
   await expect(page.locator('.play-toggle')).toHaveAttribute('aria-label', '播放');
-  expect(fixture.resolutions).toBe(3);
+  // 无音源时依次尝试 320/192/128 三种音质后才提示不可用
+  expect(fixture.resolutions).toBe(5);
   await page.locator('.play-toggle').click();
-  await expect.poll(() => fixture.resolutions).toBe(4);
+  await expect.poll(() => fixture.resolutions).toBe(8);
   await expect(page.locator('.player-song-copy strong')).toHaveText('暂不可用');
 });
 
@@ -340,12 +398,15 @@ test('top search does not request online resources until Enter and handles empty
   expect(fixture.requests.map((request) => request.keyword)).toEqual(['没有结果']);
 });
 
-test('top online search reports failures and retries the same keyword', async ({ page }) => {
+test('top online search retries transient failures and reports persistent ones', async ({
+  page,
+}) => {
   const fixture = await fixtures(page);
-  let failed = false;
+  let failed = 0;
   await page.route('https://music-api.gdstudio.xyz/api.php?*', async (route) => {
-    if (!failed) {
-      failed = true;
+    // 前三次模拟上游短暂不可用，之后恢复正常
+    if (failed < 3) {
+      failed++;
       await route.fulfill({ status: 503, body: 'Unavailable' });
     } else await route.fallback();
   });
@@ -430,10 +491,10 @@ test('editing a submitted query cancels old results and pagination starts over o
   await expect(page.locator('.online-track')).toHaveCount(3);
   await page.getByRole('button', { name: '下一页', exact: true }).click();
   await expect(page.locator('.online-pagination')).toContainText('第 2 页');
-  await page.getByRole('button', { name: 'Bilibili', exact: true }).click();
+  await page.getByRole('button', { name: 'JOOX', exact: true }).click();
   await expect(page.locator('.online-pagination')).toContainText('第 1 页');
   expect(fixture.requests.at(-1)).toMatchObject({
-    platform: 'bilibili',
+    platform: 'joox',
     keyword: '新搜索',
     page: '1',
   });
@@ -492,4 +553,38 @@ test('online actions distinguish the library, playlists and downloads', async ({
   });
   await expect(page.locator('.toast-notice')).toContainText('已下载：测试艺术家 - 在线晚风.mp3');
   expect(fixture.resolutions).toBe(0);
+});
+
+test('search history keeps recent keywords, replays them and can be cleared', async ({ page }) => {
+  await fixtures(page);
+  await page.goto('/');
+  const search = page.getByRole('textbox', { name: '搜索音乐', exact: true });
+  await search.fill('日光');
+  await search.press('Enter');
+  await expect(page.locator('.online-track')).toHaveCount(3);
+  await expect(page.locator('.search-history')).toHaveCount(0);
+  await search.fill('');
+  await search.click();
+  await expect(page.locator('.search-history')).toBeVisible();
+  await expect(page.locator('.search-history-term')).toHaveText(['日光']);
+  await search.fill('晚风');
+  await search.press('Enter');
+  await search.fill('');
+  await search.click();
+  await expect(page.locator('.search-history-term')).toHaveText(['晚风', '日光']);
+  await page.getByRole('button', { name: '搜索 日光', exact: true }).click();
+  await expect(search).toHaveValue('日光');
+  await expect(page.locator('.search-history')).toHaveCount(0);
+  await expect(page.locator('.online-track')).toHaveCount(3);
+  await search.fill('');
+  await search.click();
+  await expect(page.locator('.search-history-term')).toHaveText(['日光', '晚风']);
+  await page.getByRole('button', { name: '删除搜索历史 晚风', exact: true }).click();
+  await expect(page.locator('.search-history-term')).toHaveText(['日光']);
+  await page.reload();
+  await page.getByRole('textbox', { name: '搜索音乐', exact: true }).click();
+  await expect(page.locator('.search-history-term')).toHaveText(['日光']);
+  await page.getByRole('button', { name: '清除全部搜索历史', exact: true }).click();
+  await expect(page.locator('.search-history')).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('abner:search-history'))).toBe('[]');
 });

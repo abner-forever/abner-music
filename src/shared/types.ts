@@ -1,4 +1,4 @@
-export type MusicPlatform = 'netease' | 'joox' | 'bilibili';
+export type MusicPlatform = 'netease' | 'kuwo' | 'joox';
 export type MusicQuality = 128 | 192 | 320 | 740 | 999;
 
 export interface GdMusicReference {

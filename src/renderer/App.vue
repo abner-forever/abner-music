@@ -49,6 +49,12 @@ import { collections, formatTime, parseLyrics } from './lib/music';
 import { readPlaylistArtwork } from './lib/artwork';
 import { readState } from './lib/storage';
 import {
+  clearSearchHistory,
+  forgetSearch,
+  rememberSearch,
+  searchHistory,
+} from './lib/search-history';
+import {
   addNetworkTrack,
   createPlaylist,
   demoEnabled,
@@ -116,6 +122,8 @@ const fileInput = ref<HTMLInputElement>();
 const coverInput = ref<HTMLInputElement>();
 const changingCover = ref(false);
 const searchInput = ref<HTMLInputElement>();
+const searchShell = ref<HTMLElement>();
+const historyOpen = ref(false);
 const importMenu = ref(false);
 const version = ref(packageInfo.version);
 const openingRelease = ref(false);
@@ -195,14 +203,45 @@ const submittedSearch = ref('');
 const searchRevision = ref(0);
 const searchPlatform = ref<MusicPlatform>('netease');
 const searchOnline = computed(() => Boolean(submittedSearch.value));
-watch(search, () => {
-  submittedSearch.value = '';
+const searchHistoryItems = computed(() => {
+  const query = search.value.trim().toLocaleLowerCase();
+  const items = query
+    ? searchHistory.value.filter((term) => term.toLocaleLowerCase().includes(query))
+    : searchHistory.value;
+  return items.slice(0, 8);
 });
+watch(search, (value) => {
+  // 点击历史记录会同时改写输入框与已提交关键词，此时不应清空在线结果。
+  if (value.trim() !== submittedSearch.value) submittedSearch.value = '';
+});
+function runOnlineSearch(value: string) {
+  const term = value.trim();
+  if (!term) return;
+  submittedSearch.value = term;
+  searchRevision.value++;
+  rememberSearch(term);
+  historyOpen.value = false;
+}
 function submitOnlineSearch(event: KeyboardEvent) {
   if (event.isComposing || event.keyCode === 229 || !search.value.trim()) return;
   event.preventDefault();
-  submittedSearch.value = search.value.trim();
-  searchRevision.value++;
+  runOnlineSearch(search.value);
+}
+function openSearchHistory() {
+  if (searchHistory.value.length) historyOpen.value = true;
+}
+function closeSearchHistory(event?: FocusEvent) {
+  const next = event?.relatedTarget as Node | null;
+  if (next && searchShell.value?.contains(next)) return;
+  historyOpen.value = false;
+}
+function useSearchTerm(term: string) {
+  search.value = term;
+  runOnlineSearch(term);
+  searchInput.value?.focus();
+}
+function dismissSearchHistory() {
+  historyOpen.value = false;
 }
 const selectedPlaylist = computed(() =>
   library.playlists.find((playlist) => `playlist:${playlist.id}` === page.value),
@@ -913,19 +952,64 @@ onUnmounted(() => {
             <ChevronRight :size="20" />
           </button>
         </div>
-        <label class="search-box"
-          ><Search :size="17" /><input
-            ref="searchInput"
-            v-model="search"
-            placeholder="搜索歌曲、艺术家、专辑"
-            aria-label="搜索音乐"
-            aria-description="输入关键词匹配音乐库，按回车搜索在线音乐"
-            maxlength="120"
-            @keydown.enter="submitOnlineSearch"
-          /><button v-if="search" class="icon-button" aria-label="清空搜索" @click="search = ''">
-            <X :size="14" /></button
-          ><kbd v-else>{{ platform === 'darwin' ? '⌘' : 'Ctrl' }} K</kbd></label
+        <div
+          ref="searchShell"
+          class="search-shell"
+          @focusin="openSearchHistory"
+          @focusout="closeSearchHistory"
         >
+          <label class="search-box" @click="openSearchHistory"
+            ><Search :size="17" /><input
+              ref="searchInput"
+              v-model="search"
+              placeholder="搜索歌曲、艺术家、专辑"
+              aria-label="搜索音乐"
+              aria-description="输入关键词匹配音乐库，按回车搜索在线音乐"
+              :aria-expanded="historyOpen && Boolean(searchHistoryItems.length)"
+              aria-controls="search-history"
+              maxlength="120"
+              @keydown.enter="submitOnlineSearch"
+              @keydown.esc="dismissSearchHistory"
+            /><button v-if="search" class="icon-button" aria-label="清空搜索" @click="search = ''">
+              <X :size="14" /></button
+            ><kbd v-else>{{ platform === 'darwin' ? '⌘' : 'Ctrl' }} K</kbd></label
+          >
+          <div
+            v-if="historyOpen && searchHistoryItems.length"
+            id="search-history"
+            class="search-history"
+            role="group"
+            aria-label="搜索历史"
+            @mousedown.prevent
+          >
+            <div class="search-history-head">
+              <span>搜索历史</span>
+              <button
+                class="text-button search-history-clear"
+                aria-label="清除全部搜索历史"
+                @click="clearSearchHistory"
+              >
+                <Trash2 :size="13" />清除
+              </button>
+            </div>
+            <div v-for="term in searchHistoryItems" :key="term" class="search-history-row">
+              <button
+                class="search-history-term"
+                :aria-label="`搜索 ${term}`"
+                @click="useSearchTerm(term)"
+              >
+                <Clock3 :size="13" /><span>{{ term }}</span>
+              </button>
+              <button
+                class="icon-button search-history-remove"
+                :aria-label="`删除搜索历史 ${term}`"
+                @click="forgetSearch(term)"
+              >
+                <X :size="12" />
+              </button>
+            </div>
+          </div>
+        </div>
         <div class="topbar-actions">
           <div class="import-dropdown" @click.stop>
             <button

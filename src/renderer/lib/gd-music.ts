@@ -3,6 +3,16 @@ import type { MusicBridge } from '../../shared/types';
 
 const browserClient = createGdMusicClient();
 
+/** Electron 会把主进程错误包成 `Error invoking remote method 'music:x': Error: ...`，这里只保留真正的提示。 */
+function reason(error: unknown): unknown {
+  if (!(error instanceof Error)) return error;
+  const message = error.message
+    .replace(/^Error invoking remote method '[^']*':\s*/, '')
+    .replace(/^Error:\s*/, '')
+    .trim();
+  return !message || message === error.message ? error : new Error(message);
+}
+
 function invoke<Value>(
   operation: (bridge: MusicBridge, requestId: string) => Promise<Value>,
   signal?: AbortSignal,
@@ -17,7 +27,7 @@ function invoke<Value>(
     };
     signal?.addEventListener('abort', cancel, { once: true });
     void operation(bridge, requestId)
-      .then(resolve, reject)
+      .then(resolve, (error) => reject(reason(error)))
       .finally(() => signal?.removeEventListener('abort', cancel));
   });
 }

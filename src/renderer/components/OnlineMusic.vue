@@ -17,6 +17,7 @@ import {
 import type { MusicPlatform, Track } from '../../shared/types';
 import { musicPlatforms } from '../../shared/gd-music';
 import { gdMusic } from '../lib/gd-music';
+import { rememberSearch } from '../lib/search-history';
 import { addRemoteTrack, library, toggleFavorite } from '../stores/library';
 import { playTrack } from '../stores/player';
 import AppSelect from './AppSelect.vue';
@@ -56,6 +57,7 @@ async function search(targetPage = 1, submittedQuery = keyword.value.trim()) {
     page.value = targetPage;
     query.value = submittedQuery;
     searched.value = true;
+    rememberSearch(submittedQuery);
   } catch (reason) {
     if (!current.signal.aborted)
       error.value = reason instanceof Error ? reason.message : '搜索失败，请重试';
@@ -198,9 +200,10 @@ onUnmounted(() => request?.abort());
       </button>
     </form>
     <p v-if="!searchTerm" class="online-attribution">
-      音乐源：GD音乐台(music.gdstudio.xyz) · 仅限非商业学习使用 · 可用性取决于上游平台
+      音乐源：GD音乐台(music.gdstudio.xyz) · 酷我音乐直连(kuwo.cn) · 仅限非商业学习使用 ·
+      可用性取决于上游平台
     </p>
-    <p v-if="!searchTerm && platform !== 'netease'" class="online-attribution">
+    <p v-if="!searchTerm && platform === 'joox'" class="online-attribution">
       实验平台可能返回空结果或无法播放的歌曲。
     </p>
     <div v-if="error" class="online-error" role="alert">

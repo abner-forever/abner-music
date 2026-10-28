@@ -187,6 +187,18 @@ function retryRemote(track: Track) {
   return true;
 }
 
+/** 自动续播时遇到无音源的歌曲，直接跳到下一首，避免整条队列卡住。 */
+function skipUnavailable() {
+  const limit = Math.min(3, player.queue.length - 1);
+  if (retryCount >= limit) return false;
+  retryCount++;
+  window.dispatchEvent(
+    new CustomEvent('abner:notice', { detail: '这首歌暂无可用音源，已自动跳过' }),
+  );
+  void nextTrack(true);
+  return true;
+}
+
 function loadRemoteMetadata(track: Track, signal: AbortSignal) {
   if (!track.remote) return;
   void gdMusic
@@ -208,7 +220,7 @@ function loadRemoteMetadata(track: Track, signal: AbortSignal) {
 export async function playTrack(
   track: Track,
   tracks?: Track[],
-  options: { refresh?: boolean; resumeTime?: number; retry?: boolean } = {},
+  options: { refresh?: boolean; resumeTime?: number; retry?: boolean; automatic?: boolean } = {},
 ) {
   const token = ++generation;
   remoteRequest?.abort();
@@ -282,7 +294,9 @@ export async function playTrack(
         );
       }
     } catch (error) {
-      if (token === generation) handleError(error);
+      if (token !== generation) return;
+      if (options.automatic && track.remote && skipUnavailable()) return;
+      handleError(error);
       return;
     }
   }
@@ -325,7 +339,7 @@ export async function nextTrack(automatic = false) {
     return;
   }
   const next = tracks[(index + 1) % tracks.length];
-  await playTrack(next);
+  await playTrack(next, undefined, { automatic });
 }
 
 export function previousTrack() {

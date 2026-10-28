@@ -21,6 +21,7 @@ import { pipeline } from 'node:stream/promises';
 import { serveMedia } from './desktop/media';
 import { createUpdateController } from './desktop/updates';
 import { createGdMusicController } from './desktop/gd-music';
+import { isMusicPlatform } from './shared/gd-music';
 import { downloadFileInfo, uniqueFileName } from './desktop/download';
 import { releasePageUrl } from './shared/updates';
 import type {
@@ -213,7 +214,7 @@ function validateDownloadRequest(value: unknown): AudioDownloadRequest {
   if (
     !input.remote ||
     input.remote.provider !== 'gd' ||
-    !['netease', 'joox', 'bilibili'].includes(input.remote.platform) ||
+    !isMusicPlatform(input.remote.platform) ||
     typeof input.remote.trackId !== 'string' ||
     !input.remote.trackId ||
     ![128, 192, 320, 740, 999].includes(Number(input.quality)) ||
@@ -361,7 +362,7 @@ function validateLibraryDownload(value: unknown): LibraryDownloadRequest {
       : undefined;
   const url = text(input.url, 2_000);
   if (
-    (remote && (!['netease', 'joox', 'bilibili'].includes(remote.platform) || !remote.trackId)) ||
+    (remote && (!isMusicPlatform(remote.platform) || !remote.trackId)) ||
     (!remote && !/^https?:\/\//i.test(url)) ||
     ![128, 192, 320, 740, 999].includes(Number(input.quality)) ||
     !text(input.suggestedName) ||
