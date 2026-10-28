@@ -1,10 +1,20 @@
-name: Quality checks
+name: CI and release
 on:
   push:
-    branches: [main]
+    branches: [main, beta]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Build only or release using the branch channel
+        type: choice
+        options: [preflight, release]
+        default: preflight
 permissions:
   contents: read
+concurrency:
+  group: ci-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -29,3 +39,120 @@ jobs:
         with:
           name: playwright-results
           path: test-results/
+  plan:
+    needs: check
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta')
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      release: ${{ steps.plan.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - id: plan
+        run: node scripts/release-plan.mjs plan
+        env:
+          RELEASE_MODE: ${{ inputs.mode || 'release' }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-plan
+          path: .release/
+          include-hidden-files: true
+  build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+          - os: macos-15-intel
+            platform: darwin
+            arch: x64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-plan
+          path: .release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: node scripts/release-plan.mjs apply
+      - run: npm ci
+      - name: Make installers
+        run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+      - name: Verify packaged application
+        run: npm run test:desktop -- --arch=${{ matrix.arch }}
+        env:
+          DEBUG: pw:browser
+      - name: Verify Windows installation wizard and icons
+        if: runner.os == 'Windows'
+        run: npm run test:installer -- -Architecture ${{ matrix.arch }}
+        env:
+          DEBUG: pw:browser
+      - name: Upload Windows installer screenshots
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-evidence-${{ matrix.arch }}
+          path: test-results/windows-installer/
+          if-no-files-found: ignore
+      - name: Verify installation from macOS disk image
+        if: runner.os == 'macOS'
+        run: npm run test:dmg -- --arch=${{ matrix.arch }}
+        env:
+          DEBUG: pw:browser
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform }}-${{ matrix.arch }}
+          path: out/make/**
+          if-no-files-found: error
+  release:
+    needs: [plan, build]
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-plan
+          path: .release
+      - run: node scripts/release-plan.mjs apply
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: installers
+      - name: Validate installers and generate checksums
+        run: |
+          export RELEASE_TAG="$(node -p "'v' + require('./package.json').version")"
+          node scripts/prepare-release.mjs installers
+      - name: Stage assets, commit version and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/release-plan.mjs publish

@@ -96,14 +96,18 @@ Windows 使用包含 16–256 像素多个尺寸的 `build/icon.ico`，显式配
 
 仓库地址：<https://github.com/abner-forever/abner-music>。客户端只读取公开的 GitHub Releases API，无需内嵌 GitHub Token。
 
-`.github/workflows/ci.yml` 在推送与 PR 时执行检查；`.github/workflows/release.yml` 在推送 `v*` 标签时构建三个平台架构，并汇总安装文件和 SHA256 校验清单。`v*-beta.*` 标签在全部安装包验证通过后自动发布为 **Prerelease**；正式版保留为 Release 草稿。手动触发仅生成 Actions artifacts。
+统一使用 `.github/workflows/ci.yml`：PR 执行类型检查、单元测试、前端构建和浏览器测试；合并到 `beta` 自动发布 Beta，合并到 `main` 自动发布正式版。无需手动修改版本、维护更新日志或推送标签。
 
-发布步骤：
+发布顺序：检查测试 → 根据 Git 提交计算候选版本与日志 → 使用同一候选版本构建 macOS arm64 / x64 与 Windows x64 → 原生应用、DMG 和 Windows 安装器验证 → 汇总五个安装包与 SHA256 → 上传 Release 草稿附件 → 原子推送版本提交和标签 → 公开 Release。前一步失败不会执行后续步骤。
 
-1. 更新 `package.json` 版本并同步 lockfile，提交代码。
-2. 推送与版本完全一致的标签，例如版本 `0.1.0-beta.1` 对应 `v0.1.0-beta.1`。
-3. 等待三个构建任务完成，在各目标机器上验证安装包与播放。
-4. Beta 自动发布；正式版检查 Release 草稿并填写说明后手动发布。
+- `beta`：当前 Beta 目标递增，例如 `0.1.0-beta.15` → `0.1.0-beta.16`。正式版发布后，后续 Beta 根据提交类型进入下一个版本目标。
+- `main`：将 Beta 目标转正，例如 `0.1.0-beta.16` → `0.1.0`；后续正式版按 SemVer 递增。正式版本、安装包和 Git 标签均不带 `stable` 后缀。
+- 提交遵循 Conventional Commits：`feat:` 升 minor，`fix:` / `perf:` / `revert:` 升 patch，`feat!:` 或正文 `BREAKING CHANGE:` 升 major。Beta 期间保持目标版本、仅递增 Beta 序号，转正后应用上述递增规则。仅 docs / chore / test / ci 等维护提交不触发自动发布，但会包含在下次发布日志中。
+- 更新日志由自上个对应通道标签以来的提交自动生成，写入 `CHANGELOG.md` 和 GitHub Release，描述质量取决于提交信息。历史手写说明保留在 `.github/release-beta.md` 供参考，流程不再读取。
+- Actions 手动运行默认 `preflight`，仅构建和验证，不提交、不打标签、不发布；选择 `release` 才按当前分支发布。只允许 `beta` 和 `main` 发布。
+- 同分支发布串行执行；构建过程中分支前进时终止旧提交的发布，后续运行处理最新提交。不要强推或人工复用发布标签。
+- 安装验证或附件上传失败时，远端版本文件和标签不会更新；Git 提交与标签通过 `git push --atomic` 同时推送。Git 与 GitHub Release 无法跨服务原子提交：最后公开 Release 失败时会保留已提交版本与草稿，可在原 Actions 运行中选择 **Re-run all jobs** 恢复发布。
+- 仓库 Actions 必须允许 `GITHUB_TOKEN` 写入 contents；分支保护 / ruleset 需要允许发布机器人更新版本文件及标签，否则会在推送时失败，草稿仍不可见。机器人提交含 `[skip ci]`，且 token 推送不会重复触发发布。合并 Beta 到 main 后，需将 main 的正式版提交同步回 beta，再继续开发。
 
 用户下载 Windows 安装向导 `.exe` 或对应架构的 macOS `.dmg`，也可使用 macOS ZIP。客户端继续通过 GitHub 手动下载新版本，不使用自动更新包。
 
