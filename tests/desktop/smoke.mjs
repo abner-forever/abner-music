@@ -346,6 +346,8 @@ try {
   );
   assert.deepEqual(errors, []);
   await page.getByRole('button', { name: '稍后再说', exact: true }).click();
+  await page.locator('.settings-tabs').getByRole('button', { name: '窗口', exact: true }).click();
+  await expect(page.getByRole('button', { name: '退出应用', exact: true })).toBeVisible();
   const appProcess = application.process();
   const quit = application.waitForEvent('close', { timeout: 10000 });
   const quitClick = page
