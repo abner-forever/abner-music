@@ -37,6 +37,7 @@ const bridge: DesktopBridge = {
     },
   },
   app: {
+    setMenuBarLyrics: (state) => ipcRenderer.send('player:menu-bar-lyrics', state),
     quit: () => ipcRenderer.send('app:quit'),
     version: () => ipcRenderer.invoke('app:version'),
     checkUpdate: () => ipcRenderer.invoke('app:check-update'),

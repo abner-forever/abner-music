@@ -134,6 +134,7 @@ export interface DesktopBridge {
     onMaximized(callback: (maximized: boolean) => void): () => void;
   };
   app: {
+    setMenuBarLyrics(state: { image: string; width: number; lyric: string }): void;
     quit(): void;
     version(): Promise<string>;
     checkUpdate(): Promise<UpdateStatus>;

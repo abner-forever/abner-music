@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { renderMenuBar } from './lib/menu-bar';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue';
 import {
   ArrowDownToLine,
@@ -132,11 +133,13 @@ const preferences = ref(
   readState<{
     theme: 'light' | 'dark' | 'system';
     showDemos: boolean;
+    menuBarLyrics: boolean;
     sidebarWidth: number;
     sidebarCompact: boolean;
   }>('abner:preferences', {
     theme: 'system',
     showDemos: demoEnabled,
+    menuBarLyrics: false,
     sidebarWidth: 218,
     sidebarCompact: false,
   }),
@@ -266,6 +269,18 @@ const activeLyric = computed(() => {
   });
   return index;
 });
+const menuBarLyric = computed(() => {
+  if (!preferences.value.menuBarLyrics) return '';
+  return lyricLines.value[activeLyric.value]?.text || currentTrack.value?.title || '';
+});
+watch(
+  [menuBarLyric, () => player.playing],
+  ([lyric, playing]) => {
+    if (platform !== 'darwin') return;
+    window.desktop?.app.setMenuBarLyrics({ ...renderMenuBar(lyric, playing), lyric });
+  },
+  { immediate: true },
+);
 const lyricContainer = ref<HTMLElement>();
 const queueDuration = computed(() =>
   queueTracks.value.reduce((total, track) => total + track.duration, 0),
@@ -1702,6 +1717,22 @@ onUnmounted(() => {
                       跟随系统
                     </button>
                   </div>
+                </div>
+                <div v-if="platform === 'darwin'" class="setting-row">
+                  <div>
+                    <strong>菜单栏歌词</strong
+                    ><span>在 macOS 顶部菜单栏显示当前歌词，暂停时保留</span>
+                  </div>
+                  <button
+                    class="switch"
+                    :class="{ on: preferences.menuBarLyrics }"
+                    role="switch"
+                    :aria-checked="Boolean(preferences.menuBarLyrics)"
+                    aria-label="菜单栏歌词"
+                    @click="preferences.menuBarLyrics = !preferences.menuBarLyrics"
+                  >
+                    <span />
+                  </button>
                 </div>
                 <div v-if="demoEnabled" class="setting-row">
                   <div>

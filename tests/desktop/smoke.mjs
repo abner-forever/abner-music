@@ -149,9 +149,90 @@ try {
   await page.getByRole('button', { name: '均衡器', exact: true }).click();
   await page.getByRole('button', { name: '爵士', exact: true }).click();
   await page.getByRole('button', { name: '完成', exact: true }).click();
+  if (process.platform === 'darwin') {
+    await application.evaluate(({ Tray }) => {
+      const original = Tray.prototype.setImage;
+      Tray.prototype.setImage = function (...args) {
+        globalThis.lyricsTray = this;
+        globalThis.menuBarImage = args[0].toDataURL();
+        return original.apply(this, args);
+      };
+      const tooltip = Tray.prototype.setToolTip;
+      Tray.prototype.setToolTip = function (value) {
+        globalThis.menuBarTooltip = value;
+        return tooltip.call(this, value);
+      };
+    });
+    await page.locator('.settings-nav').click();
+    await page.getByRole('switch', { name: '菜单栏歌词', exact: true }).click();
+    await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+  }
   await page.getByRole('button', { name: '播放 desktop-fixture', exact: true }).click();
   await expect(page.locator('.play-toggle')).toHaveAttribute('aria-label', '暂停');
   await expect.poll(() => page.locator('.timeline > span').first().textContent()).not.toBe('0:00');
+  if (process.platform === 'darwin') {
+    await expect
+      .poll(() => application.evaluate(() => globalThis.menuBarTooltip))
+      .toMatch(/桌面播放|时间在继续/);
+    await page.locator('.play-toggle').click();
+    await expect
+      .poll(() => application.evaluate(() => globalThis.menuBarTooltip))
+      .toMatch(/桌面播放|时间在继续/);
+    await writeFile(
+      'test-results/menu-bar.png',
+      Buffer.from(
+        (await application.evaluate(() => globalThis.menuBarImage)).split(',')[1],
+        'base64',
+      ),
+    );
+    await page.evaluate(() =>
+      window.desktop.app.onMediaKey((action) => {
+        document.documentElement.dataset.menuBarAction = action;
+      }),
+    );
+    await page.evaluate(() => window.desktop.window.close());
+    for (const [index, action] of ['previous', 'toggle', 'next'].entries()) {
+      await application.evaluate((_electron, index) => {
+        const tray = globalThis.lyricsTray;
+        const bounds = tray.getBounds();
+        const imageWidth =
+          Buffer.from(globalThis.menuBarImage.split(',')[1], 'base64').readUInt32BE(16) / 2;
+        tray.emit('click', {}, bounds, {
+          x: (bounds.width - imageWidth) / 2 + imageWidth - 110 + index * 28 + 14,
+          y: bounds.y + bounds.height / 2,
+        });
+      }, index);
+      await expect(page.locator('html')).toHaveAttribute('data-menu-bar-action', action);
+      assert.equal(
+        await application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0].isVisible(),
+        ),
+        false,
+      );
+    }
+    for (const icon of [false, true]) {
+      await application.evaluate((_electron, icon) => {
+        const tray = globalThis.lyricsTray;
+        const bounds = tray.getBounds();
+        const width =
+          Buffer.from(globalThis.menuBarImage.split(',')[1], 'base64').readUInt32BE(16) / 2;
+        tray.emit('click', {}, bounds, {
+          x: (bounds.width - width) / 2 + (icon ? width - 13 : 2),
+          y: 10,
+        });
+      }, icon);
+      assert.equal(
+        await application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0].isVisible(),
+        ),
+        icon,
+      );
+    }
+    // Resume using the visible player after exercising native tray dispatch.
+    if ((await page.locator('.play-toggle').getAttribute('aria-label')) === '暂停')
+      await page.locator('.play-toggle').click();
+    await page.locator('.play-toggle').click();
+  }
   const playbackTime = await page.locator('.timeline > span').first().textContent();
   await page.evaluate(() => window.desktop.window.close());
   await expect
@@ -196,6 +277,22 @@ try {
     ),
     true,
   );
+  const miniSize = await application.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].getSize(),
+  );
+  assert.deepEqual(miniSize, [360, 156]);
+  if (process.platform === 'darwin') {
+    assert.deepEqual(
+      await application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].getWindowButtonPosition(),
+      ),
+      { x: 12, y: 10 },
+    );
+  }
+  for (const label of ['上一首', '下一首', '退出迷你播放器']) {
+    await page.getByRole('button', { name: label, exact: true }).click({ trial: true });
+  }
+  await page.screenshot({ path: 'test-results/mini-player.png' });
   await page.getByRole('button', { name: '退出迷你播放器', exact: true }).click();
   await expect(page.locator('.app-shell')).not.toHaveClass(/is-mini/);
   await application.close();
