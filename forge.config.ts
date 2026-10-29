@@ -9,11 +9,13 @@ import path from 'node:path';
 import { prerelease } from 'semver';
 import packageInfo from './package.json';
 import { verifyMacBundle } from './scripts/verify-mac-bundle.mjs';
+import { pruneElectronLocales } from './scripts/prune-electron-locales.mjs';
 
 const config: ForgeConfig = {
   packagerConfig: {
     name: 'Abner Music',
     asar: true,
+    afterExtract: [pruneElectronLocales],
     icon: 'build/icon',
     extraResource: ['build/icon.png'],
     ...(process.env.ELECTRON_ZIP_DIR ? { electronZipDir: process.env.ELECTRON_ZIP_DIR } : {}),
