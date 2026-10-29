@@ -386,14 +386,19 @@ try {
     'pic',
     'lyric',
   ]);
-  assert.match(
-    await page.evaluate(() =>
-      window.desktop.music
-        .search({ platform: 'invalid', keyword: 'test', page: 1 }, 'invalid-platform')
-        .catch((error) => error.message),
-    ),
-    /不支持的音乐平台/,
-  );
+  for (const platform of ['invalid', 'bilibili']) {
+    assert.match(
+      await page.evaluate(
+        (platform) =>
+          window.desktop.music
+            .search({ platform, keyword: 'test', page: 1 }, `unsupported-${platform}`)
+            .catch((error) => error.message),
+        platform,
+      ),
+      /该音乐平台已下线，请重新搜索这首歌/,
+    );
+  }
+  assert.equal(await application.evaluate(() => globalThis.__gdRequests.length), 4);
   await page.evaluate(() => {
     window.__gdCancelResult = window.desktop.music
       .search({ platform: 'netease', keyword: 'cancel-test', page: 1 }, 'cancel-request')
