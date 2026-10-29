@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0-beta.3
+
+### 修复与性能
+
+- perf(package): 裁剪 Electron 多余语言资源以缩小安装包 (dc15acc)
+
 ## 0.2.0-beta.2
 
 ### 修复与性能
